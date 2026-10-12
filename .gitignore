@@ -21,6 +21,8 @@ __pycache__/
 
 # Env
 .env
+.env.*
+! .env.example
 CLAUDE.md
 
 # Editor directories and files
