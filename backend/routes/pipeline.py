@@ -67,7 +67,7 @@ async def run_pipeline(body: PipelineRequest):
                     yield _event({"agent": 2, "status": "error", "message": chunk["message"]})
                     return
 
-            # ── Agent 3: Optimizer — streams each iteration live ──────────────
+            # ── Agent 3: Optimizer  ──────────────
             yield _event({"agent": 3, "status": "optimizing"})
             optimization = {}
 
@@ -120,7 +120,7 @@ async def run_pipeline(body: PipelineRequest):
             report = await generate_report(
                 deposit_profile=deposit,
                 flowsheet=flowsheet,
-                compliance=compliance,
+                compliance=compliance, 
                 historical_context=historical,
             )
             yield _event({
