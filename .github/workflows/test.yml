@@ -3,12 +3,13 @@ name: "Test"
 on:
   push:
     branches:
-      -main
+      - main
   pull_request:
     branches:
-      -main
-    types: [opened, reopened]
+      - main
+    types: [opened]
   
+# tell the workflow to run on the latest version of Ubuntu and use a specific container image for Python 3.12
 jobs:
   test:
     runs-on: ubuntu-latest
