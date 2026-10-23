@@ -132,7 +132,9 @@ export default function DiagnosisModule() {
                 {Array.from({ length: 90 }, (_, i) => {
                   const peaks = [16, 24, 35, 52, 68, 78];
                   const isPeak = peaks.some((peak) => Math.abs(i - peak) < 2);
-                  const height = isPeak ? 70 + Math.random() * 70 : 12 + Math.random() * 16;
+                  const height = isPeak
+                    ? 100 - ((i * 17) % 30)
+                    : 12 + ((i * 13) % 16);
                   return (
                     <div
                       key={i}

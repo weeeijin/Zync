@@ -7,6 +7,7 @@ python-multipart==0.0.9
 zhipuai
 pytest
 fastembed==0.5.0
+pytest-asyncio
 
 # Database
 neo4j==5.20.0
