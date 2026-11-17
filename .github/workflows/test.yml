@@ -1,63 +1,67 @@
-name: "Test"
+name: Test
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
-  
-# tell the workflow to run on the latest version of Ubuntu and use a specific container image for Python 3.12
+    branches: [main]
+  workflow_call: # reused by deploy.yml so a release can't ship untested code
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   frontend:
-    name: Check Frontend
+    name: Check frontend
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: frontend
-
     steps:
-      - name: Checkout respository
+      - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
       - name: Install frontend dependencies
         run: npm ci
-      
+
       - name: Run frontend lint
         run: npm run lint
-      
+
       - name: Build frontend
         run: npm run build
-        
+
   backend:
     name: Check backend
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: backend
-      
     steps:
-      - name: Checkout respository
-        uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.11"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
-      
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
-      
+        run: pip install -r requirements-dev.txt
+
       - name: Run backend unit tests
         run: pytest -c pytest.ini tests/unit

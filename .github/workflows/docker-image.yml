@@ -2,21 +2,33 @@ name: Docker Image CI
 
 on:
   push:
-    branches:
-      - main
-
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
-    name: Build Docker services
+    name: Build production images
     runs-on: ubuntu-latest
-
+    # Compose refuses to interpolate without these; build-only placeholders.
+    env:
+      NEO4J_PASSWORD: ci-placeholder
+      POSTGRES_PASSWORD: ci-placeholder
+      ADMIN_SECRET: ci-placeholder-not-a-secret
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Build Docker Compose services
-        run: docker compose build
+      - name: Validate compose files
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+
+      - name: Build production images
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml build
