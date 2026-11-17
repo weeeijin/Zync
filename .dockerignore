@@ -1,0 +1,15 @@
+# Build context for backend/Dockerfile is the repo root (it needs ../data).
+# Allow-list: ignore everything, then re-include only what the image needs.
+*
+!backend/
+!data/
+
+# Never ship secrets, caches or tests into the image
+backend/.env
+backend/.env.*
+backend/tests/
+backend/.pytest_cache/
+backend/requirements-dev.txt
+**/__pycache__/
+**/*.pyc
+data/**/*.pdf

@@ -1,13 +1,12 @@
+# Runtime dependencies only — test/dev tooling lives in requirements-dev.txt
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 httpx==0.27.0
 python-dotenv==1.0.1
 pydantic==2.10.6
 python-multipart==0.0.9
-zhipuai
-pytest
+zhipuai==2.1.5.20250825
 fastembed==0.5.0
-pytest-asyncio
 
 # Database
 neo4j==5.20.0
