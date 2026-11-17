@@ -11,7 +11,11 @@ One hardened EC2 server in the Malaysia region (`ap-southeast-5`) running the Do
 | `github_oidc.tf` | Keyless role for GitHub Actions that opens SSH for the runner's IP only during a deploy |
 | `templates/user_data.sh.tftpl` | First boot: Docker, security updates, fail2ban, swap, AWS CLI, nightly backup cron |
 
-## First-time setup
+## Quick demo (one command)
+
+To create a short-lived showcase environment and connect GitHub to it automatically, run `infra/demo/demo-up.sh`. When you're done, run `infra/demo/demo-down.sh`. It uses local state, `demo/demo.tfvars` (Singapore, a free-tier-eligible instance, teardown allowed) and a US$5 budget alarm. See [`docs/DEMO.md`](../docs/DEMO.md).
+
+## First-time setup (long-lived environment)
 
 ```bash
 # 0. Prerequisites: AWS CLI logged in (aws configure / aws sso login), Terraform >= 1.10

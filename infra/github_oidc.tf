@@ -8,6 +8,12 @@ variable "github_repository" {
   default     = "weeeijin/Zync"
 }
 
+variable "github_environment" {
+  description = "GitHub Actions environment whose deploy jobs may assume the role (deploy.yml uses \"production\")"
+  type        = string
+  default     = "production"
+}
+
 variable "create_github_oidc_provider" {
   description = "Set false if the account already has the GitHub OIDC provider"
   type        = bool
@@ -47,7 +53,7 @@ data "aws_iam_policy_document" "github_deploy_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.environment}"]
+      values   = ["repo:${var.github_repository}:environment:${var.github_environment}"]
     }
   }
 }

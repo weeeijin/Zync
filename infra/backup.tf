@@ -44,7 +44,7 @@ data "aws_iam_policy_document" "kms" {
 resource "aws_kms_key" "main" {
   description             = "${local.name}: backups, EBS volumes and alerts"
   enable_key_rotation     = true
-  deletion_window_in_days = 30
+  deletion_window_in_days = var.kms_deletion_window_days
   policy                  = data.aws_iam_policy_document.kms.json
 }
 
@@ -57,10 +57,9 @@ resource "aws_kms_alias" "main" {
 # trivy:ignore:AVD-AWS-0089 — access logging would need a second bucket; the instance role is the only writer and CloudTrail records API access
 resource "aws_s3_bucket" "backups" {
   bucket = local.backup_bucket
-
-  lifecycle {
-    prevent_destroy = true # never lose backups to a careless `terraform destroy`
-  }
+  # false (production): `terraform destroy` fails while backups exist, so they
+  # can't be lost by accident. true (demo): tear everything down in one go.
+  force_destroy = var.allow_destroy_backups
 }
 
 resource "aws_s3_bucket_public_access_block" "backups" {

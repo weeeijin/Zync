@@ -5,10 +5,10 @@ name: Monitoring config
 on:
   push:
     branches: [main]
-    paths: ["monitoring/**", "docker-compose*.yml", "deploy/**", ".github/workflows/monitoring.yml"]
+    paths: ["monitoring/**", "docker-compose*.yml", "deploy/**", "infra/demo/**", ".github/workflows/monitoring.yml"]
   pull_request:
     branches: [main]
-    paths: ["monitoring/**", "docker-compose*.yml", "deploy/**", ".github/workflows/monitoring.yml"]
+    paths: ["monitoring/**", "docker-compose*.yml", "deploy/**", "infra/demo/**", ".github/workflows/monitoring.yml"]
 
 permissions:
   contents: read
@@ -59,4 +59,4 @@ jobs:
         run: for f in monitoring/grafana/dashboards/*.json; do python3 -m json.tool "$f" > /dev/null && echo "ok $f"; done
 
       - name: Shell scripts (shellcheck)
-        run: shellcheck -S warning deploy/*.sh monitoring/*/entrypoint.sh backend/docker-entrypoint.sh
+        run: shellcheck -S warning deploy/*.sh monitoring/*/entrypoint.sh backend/docker-entrypoint.sh infra/demo/*.sh

@@ -47,3 +47,8 @@ infra/.terraform/
 !*.tfvars.example
 infra/backend.hcl
 crash.log
+
+# Terraform override files (demo local backend)
+*_override.tf
+!infra/demo/backend_override.tf
+infra/demo.tfstate*

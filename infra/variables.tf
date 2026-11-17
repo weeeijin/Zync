@@ -79,3 +79,26 @@ variable "alarm_email" {
   type        = string
   default     = ""
 }
+
+variable "allow_destroy_backups" {
+  description = "Let `terraform destroy` delete the backup bucket even if it contains backups. Keep false in production; true for short-lived demos"
+  type        = bool
+  default     = false
+}
+
+variable "kms_deletion_window_days" {
+  description = "Waiting period before the KMS key is deleted after destroy (7-30 days)"
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.kms_deletion_window_days >= 7 && var.kms_deletion_window_days <= 30
+    error_message = "AWS requires a KMS deletion window between 7 and 30 days."
+  }
+}
+
+variable "monthly_budget_usd" {
+  description = "Email alarm_email when forecast or actual monthly AWS spend exceeds this (0 disables)"
+  type        = number
+  default     = 10
+}

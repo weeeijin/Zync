@@ -22,3 +22,8 @@ output "backup_bucket" {
   description = "S3 bucket receiving nightly database dumps"
   value       = aws_s3_bucket.backups.bucket
 }
+
+output "aws_region" {
+  description = "Region the stack runs in — set as the AWS_REGION GitHub variable"
+  value       = var.aws_region
+}

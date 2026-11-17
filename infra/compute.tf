@@ -89,7 +89,14 @@ resource "aws_instance" "app" {
     encrypted             = true
     kms_key_id            = aws_kms_key.main.arn
     delete_on_termination = true
-    tags                  = { Name = "${local.name}-root", Backup = "daily" }
+    # Explicit (default_tags don't reliably reach root volumes); DLM copies
+    # these onto snapshots, which demo-down.sh uses to clean them up
+    tags = {
+      Name        = "${local.name}-root"
+      Backup      = "daily"
+      Project     = var.project
+      Environment = var.environment
+    }
   }
 
   tags = { Name = "${local.name}-app" }

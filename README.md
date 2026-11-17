@@ -1,5 +1,7 @@
 # Zync — Malaysia's Sovereign REE Engineering Intelligence
 
+[![Test](https://github.com/weeeijin/Zync/actions/workflows/test.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/test.yml) [![Security](https://github.com/weeeijin/Zync/actions/workflows/security.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/security.yml) [![Docker Image CI](https://github.com/weeeijin/Zync/actions/workflows/docker-image.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/docker-image.yml) [![Terraform](https://github.com/weeeijin/Zync/actions/workflows/terraform.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/terraform.yml) [![Monitoring config](https://github.com/weeeijin/Zync/actions/workflows/monitoring.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/monitoring.yml) [![Deploy](https://github.com/weeeijin/Zync/actions/workflows/deploy.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/deploy.yml)
+
 > Putting GLM-5.1's scientific reasoning at the exact point where Malaysia's RM 1 trillion rare earth ambition is won or lost.
 
 Malaysia sits on RM 1 trillion in Rare Earth Element (REE) resources but lacks the hydrometallurgical engineering depth to process them independently. Every critical processing decision — which lixiviant to use, why yields are dropping, which zone to invest in — currently depends on foreign expertise or goes unmade. Zync changes that.
@@ -214,6 +216,10 @@ See [DevOps & Operations](#devops--operations) below.
 | What to do when an alert fires | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) |
 
 **Release:** `git tag v1.0.0 && git push origin v1.0.0`. **Roll back:** Actions → Deploy → Run workflow → enter a previous version.
+
+**Try it yourself:**
+- **Locally, for free:** `docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.monitoring.yml -f docker-compose.monitoring.local.yml up -d`, then open Grafana at http://localhost:3000/grafana.
+- **On AWS for a day:** `infra/demo/demo-up.sh` creates everything, and `infra/demo/demo-down.sh` deletes it. See [`docs/DEMO.md`](docs/DEMO.md) for the full showcase walkthrough: release, incident, automatic rollback, backup and restore.
 
 ---
 
