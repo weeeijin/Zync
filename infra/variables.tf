@@ -16,6 +16,12 @@ variable "aws_region" {
   default     = "ap-southeast-5"
 }
 
+variable "create_server" {
+  description = "Create the EC2 app server (and its IP, DNS and alarms). false = network, backups, IAM and budget only, e.g. while the account's vCPU quota is too low"
+  type        = bool
+  default     = true
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC"
   type        = string

@@ -2,6 +2,7 @@
 aws_region    = "ap-southeast-5" # Malaysia
 environment   = "production"
 instance_type = "t3.large"
+# create_server = false   # build network/backups/IAM only (e.g. while the vCPU quota is too low)
 
 # Public half of the key whose private half is the SERVER_KEY GitHub secret
 ssh_public_key = "ssh-ed25519 AAAA... zync-deploy"

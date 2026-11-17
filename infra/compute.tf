@@ -61,6 +61,8 @@ resource "aws_iam_instance_profile" "app" {
 
 # ── App server ───────────────────────────────────────────────────────────────
 resource "aws_instance" "app" {
+  count = var.create_server ? 1 : 0
+
   ami                    = data.aws_ssm_parameter.ubuntu_ami.value
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id
@@ -108,8 +110,10 @@ resource "aws_instance" "app" {
 }
 
 resource "aws_eip" "app" {
+  count = var.create_server ? 1 : 0
+
   domain   = "vpc"
-  instance = aws_instance.app.id
+  instance = aws_instance.app[0].id
   tags     = { Name = "${local.name}-eip" }
 
   depends_on = [aws_internet_gateway.main]
@@ -117,11 +121,11 @@ resource "aws_eip" "app" {
 
 # ── DNS (optional) ───────────────────────────────────────────────────────────
 resource "aws_route53_record" "app" {
-  count = local.create_dns ? 1 : 0
+  count = local.create_dns && var.create_server ? 1 : 0
 
   zone_id = var.route53_zone_id
   name    = var.domain_name
   type    = "A"
   ttl     = 300
-  records = [aws_eip.app.public_ip]
+  records = [aws_eip.app[0].public_ip]
 }

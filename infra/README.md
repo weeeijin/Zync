@@ -13,7 +13,7 @@ One hardened EC2 server in the Malaysia region (`ap-southeast-5`) running the Do
 
 ## Quick demo (one command)
 
-To create a short-lived showcase environment and connect GitHub to it automatically, run `infra/demo/demo-up.sh`. When you're done, run `infra/demo/demo-down.sh`. It uses local state, `demo/demo.tfvars` (N. Virginia, which new AWS accounts can launch servers in; a free-tier-eligible instance; teardown allowed) and a US$5 budget alarm. See [`docs/DEMO.md`](../docs/DEMO.md).
+To create a short-lived showcase environment and connect GitHub to it automatically, run `infra/demo/demo-up.sh`. When you're done, run `infra/demo/demo-down.sh`. It uses local state, `demo/demo.tfvars` (N. Virginia, which new AWS accounts can launch servers in; a free-tier-eligible instance; teardown allowed) and a US$5 budget alarm. `CREATE_SERVER=false` builds everything except the EC2 server, for accounts whose vCPU quota is still too low. See [`docs/DEMO.md`](../docs/DEMO.md).
 
 ## First-time setup (long-lived environment)
 

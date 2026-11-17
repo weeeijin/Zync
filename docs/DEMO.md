@@ -28,6 +28,18 @@ ALARM_EMAIL=you@example.com infra/demo/demo-up.sh
 
 🎬 **Show:** `terraform apply` creating the VPC, firewall, encrypted disk, backup bucket, alarms, budget and OIDC role. Then the script filling in GitHub secrets on its own. Confirm the AWS email subscription.
 
+### No server yet? Show the infrastructure on its own
+
+AWS limits new accounts to very few vCPUs (`VcpuLimitExceeded`). Until a quota increase is approved, build everything except the server. It's real infrastructure as code and costs about nothing:
+
+```bash
+CREATE_SERVER=false ALARM_EMAIL=you@example.com infra/demo/demo-up.sh
+terraform -chdir=infra state list        # what Terraform created
+CONFIRM=destroy infra/demo/demo-down.sh  # remove it all again
+```
+
+🎬 **Show:** the plan, then the VPC, encrypted S3 bucket, KMS key, IAM roles, OIDC provider and budget in the AWS console next to the `.tf` files, then the clean destroy. Scenes 3–4 (Grafana, Loki, alerts) also work locally: see the README's local monitoring section.
+
 ## 2. Release v1.0.0: the full pipeline (≈10 min)
 
 ```bash
@@ -122,6 +134,7 @@ Check the AWS console: **EC2 → Instances** should be empty, and **Billing → 
 | Symptom | Fix |
 |---|---|
 | `InvalidParameterCombination` / instance type not eligible | In `infra/demo/demo.tfvars`, set `instance_type = "t3.large"` |
+| `VcpuLimitExceeded: ... vCPU limit of 1` | Request more under Service Quotas → EC2 → *Running On-Demand Standard instances* (Free plan accounts are usually refused; upgrading to the Paid plan keeps your credits). Meanwhile use `CREATE_SERVER=false` |
 | `This account is currently blocked` when creating the instance | New / Free plan accounts may only launch EC2 in `us-east-1`, `us-east-2` or `us-west-2`. Keep the demo's default `us-east-1` |
 | `OptInRequired` for ap-southeast-5 | Enable Malaysia under Account → AWS Regions, then set `aws_region` in `infra/demo/demo.tfvars` |
 | Deploy: `Missing .env` | Re-run `infra/demo/connect-github.sh` |

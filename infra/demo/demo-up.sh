@@ -7,6 +7,8 @@
 #   ALARM_EMAIL=you@example.com   budget + infrastructure alarm emails (recommended)
 #   GLM_API_KEY=...               otherwise you're prompted (input hidden)
 #   USE_HTTPS=1                   real HTTPS via <ip>.sslip.io + Let's Encrypt
+#   ALERT_WEBHOOK_URL=...         Discord (…/slack) or Slack webhook for alerts
+#   CREATE_SERVER=false           everything except the EC2 server (no vCPU quota needed)
 #
 # Tear down afterwards with infra/demo/demo-down.sh
 set -euo pipefail
@@ -47,7 +49,17 @@ terraform apply -input=false -auto-approve \
   -var-file="$HERE/demo.tfvars" \
   -var "ssh_public_key=$(cat "$KEY.pub")" \
   -var "ssh_allowed_cidrs=[\"$MY_IP/32\"]" \
-  -var "alarm_email=${ALARM_EMAIL:-}"
+  -var "alarm_email=${ALARM_EMAIL:-}" \
+  -var "create_server=${CREATE_SERVER:-true}"
+
+if [ "${CREATE_SERVER:-true}" = false ]; then
+  say "Infrastructure ready (no server: CREATE_SERVER=false)"
+  terraform state list
+  echo
+  echo "Re-run without CREATE_SERVER=false to add the server and connect GitHub."
+  echo "Delete everything with: CONFIRM=destroy infra/demo/demo-down.sh"
+  exit 0
+fi
 
 IP="$(terraform output -raw public_ip)"
 

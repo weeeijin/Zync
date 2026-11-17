@@ -4,6 +4,8 @@
 # Auto-recover the instance onto healthy hardware if AWS detects a host failure.
 # Always on — it needs no notification target.
 resource "aws_cloudwatch_metric_alarm" "system_recovery" {
+  count = var.create_server ? 1 : 0
+
   alarm_name          = "${local.name}-system-status-recover"
   alarm_description   = "Underlying AWS host failed — automatically recover the instance"
   namespace           = "AWS/EC2"
@@ -13,7 +15,7 @@ resource "aws_cloudwatch_metric_alarm" "system_recovery" {
   evaluation_periods  = 2
   threshold           = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  dimensions          = { InstanceId = aws_instance.app.id }
+  dimensions          = { InstanceId = aws_instance.app[0].id }
   alarm_actions = concat(
     ["arn:aws:automate:${var.aws_region}:ec2:recover"],
     aws_sns_topic.alerts[*].arn,
@@ -34,7 +36,7 @@ resource "aws_sns_topic_subscription" "email" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "instance_status" {
-  count               = local.create_alarms ? 1 : 0
+  count               = local.create_alarms && var.create_server ? 1 : 0
   alarm_name          = "${local.name}-instance-status"
   alarm_description   = "Instance status check failing (OS hung, out of memory, disk full...)"
   namespace           = "AWS/EC2"
@@ -44,13 +46,13 @@ resource "aws_cloudwatch_metric_alarm" "instance_status" {
   evaluation_periods  = 3
   threshold           = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  dimensions          = { InstanceId = aws_instance.app.id }
+  dimensions          = { InstanceId = aws_instance.app[0].id }
   alarm_actions       = [aws_sns_topic.alerts[0].arn]
   ok_actions          = [aws_sns_topic.alerts[0].arn]
 }
 
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
-  count               = local.create_alarms ? 1 : 0
+  count               = local.create_alarms && var.create_server ? 1 : 0
   alarm_name          = "${local.name}-cpu-high"
   alarm_description   = "CPU above 85% for 15 minutes"
   namespace           = "AWS/EC2"
@@ -60,7 +62,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   evaluation_periods  = 3
   threshold           = 85
   comparison_operator = "GreaterThanThreshold"
-  dimensions          = { InstanceId = aws_instance.app.id }
+  dimensions          = { InstanceId = aws_instance.app[0].id }
   alarm_actions       = [aws_sns_topic.alerts[0].arn]
   ok_actions          = [aws_sns_topic.alerts[0].arn]
 }
