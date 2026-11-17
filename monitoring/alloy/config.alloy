@@ -1,0 +1,89 @@
+// Collect logs from every Docker container and ship them to Loki.
+// Labels kept low-cardinality (service, container, level); request_id and
+// route go into structured metadata so they are searchable but cheap.
+
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "15s"
+}
+
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.app.receiver]
+}
+
+loki.process "app" {
+  forward_to = [loki.write.default.receiver]
+
+  // Backend: JSON logs from observability.py
+  stage.match {
+    selector = "{service=\"backend\"}"
+
+    stage.json {
+      expressions = {
+        level      = "level",
+        request_id = "request_id",
+        route      = "http_route",
+        status     = "http_status",
+      }
+    }
+
+    stage.labels {
+      values = { level = "" }
+    }
+
+    stage.structured_metadata {
+      values = { request_id = "", route = "", status = "" }
+    }
+  }
+
+  // Caddy: JSON access logs
+  stage.match {
+    selector = "{service=\"caddy\"}"
+
+    stage.json {
+      expressions = {
+        level      = "level",
+        status     = "status",
+        // echoed back by the backend, so Caddy logs it in resp_headers
+        request_id = "resp_headers.\"X-Request-Id\"[0]",
+      }
+    }
+
+    stage.labels {
+      values = { level = "" }
+    }
+
+    stage.structured_metadata {
+      values = { status = "", request_id = "" }
+    }
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

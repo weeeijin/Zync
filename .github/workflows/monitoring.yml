@@ -1,0 +1,62 @@
+name: Monitoring config
+
+# Validates every monitoring config with the exact image versions we run,
+# so a typo can't take down alerting on deploy.
+on:
+  push:
+    branches: [main]
+    paths: ["monitoring/**", "docker-compose*.yml", "deploy/**", ".github/workflows/monitoring.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["monitoring/**", "docker-compose*.yml", "deploy/**", ".github/workflows/monitoring.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Prometheus, Alertmanager, Loki, Alloy, Grafana
+    runs-on: ubuntu-latest
+    env:
+      NEO4J_PASSWORD: ci-placeholder
+      POSTGRES_PASSWORD: ci-placeholder
+      ADMIN_SECRET: ci-placeholder-not-a-secret
+      GRAFANA_ADMIN_PASSWORD: ci-placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Full production compose (app + prod + monitoring)
+        run: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml config --quiet
+
+      - name: Prometheus config and alert rules
+        run: |
+          mkdir -p /tmp/targets && echo '[]' > /tmp/targets/public.json
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/monitoring/prometheus:/etc/prometheus:ro" \
+            -v /tmp/targets:/prometheus/targets:ro \
+            prom/prometheus:v3.16.0 check config /etc/prometheus/prometheus.yml
+
+      - name: Alertmanager config (with and without a webhook)
+        run: |
+          for url in "" "https://hooks.slack.com/services/T000/B000/ci-test"; do
+            docker run --rm -e SLACK_WEBHOOK_URL="$url" --entrypoint sh \
+              -v "$PWD/monitoring/alertmanager:/etc/alertmanager:ro" \
+              prom/alertmanager:v0.35.0 -c \
+              'sed "s#^exec .*#exec amtool check-config /tmp/alertmanager.yml#" /etc/alertmanager/entrypoint.sh > /tmp/e.sh && sh /tmp/e.sh'
+          done
+
+      - name: Loki config
+        run: |
+          docker run --rm -v "$PWD/monitoring/loki/loki.yml:/etc/loki/loki.yml:ro" \
+            grafana/loki:3.7.10 -config.file=/etc/loki/loki.yml -verify-config
+
+      - name: Alloy config syntax
+        run: |
+          docker run --rm -v "$PWD/monitoring/alloy:/etc/alloy:ro" \
+            grafana/alloy:v1.22.0 fmt /etc/alloy/config.alloy > /dev/null
+
+      - name: Grafana dashboards are valid JSON
+        run: for f in monitoring/grafana/dashboards/*.json; do python3 -m json.tool "$f" > /dev/null && echo "ok $f"; done
+
+      - name: Shell scripts (shellcheck)
+        run: shellcheck -S warning deploy/*.sh monitoring/*/entrypoint.sh backend/docker-entrypoint.sh

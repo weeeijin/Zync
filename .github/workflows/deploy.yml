@@ -94,7 +94,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_KEY }}
-          source: "docker-compose.yml,docker-compose.prod.yml,deploy"
+          source: "docker-compose.yml,docker-compose.prod.yml,docker-compose.monitoring.yml,deploy,monitoring"
           target: "/home/ubuntu/Zync"
 
       - name: Pull images, roll out, smoke test (auto-rollback on failure)
@@ -117,7 +117,7 @@ jobs:
 
             export BACKEND_IMAGE="$IMAGE_PREFIX/zync-backend"
             export FRONTEND_IMAGE="$IMAGE_PREFIX/zync-frontend"
-            compose() { docker compose -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
+            compose() { docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml "$@"; }
 
             rollout() {
               IMAGE_TAG="$1" compose pull --quiet &&

@@ -1,0 +1,199 @@
+# Severity: critical = user-facing outage or data at risk (act now)
+#           warning  = degradation or approaching a limit (act today)
+groups:
+  # ── Availability ───────────────────────────────────────────────────────────
+  - name: availability
+    rules:
+      - alert: PublicEndpointDown
+        expr: probe_success{job="probe-public"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "Zync is unreachable from the internet"
+          description: "{{ $labels.instance }} has failed its probe for 3 minutes. Check Caddy, DNS and the security group."
+
+      - alert: BackendNotReady
+        expr: probe_success{probe="backend-ready"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Backend /ready is failing — a database is unreachable"
+          description: "Open /ready on the server (or the Zync dashboard) to see which of Postgres, Neo4j or Qdrant is down."
+
+      - alert: FrontendDown
+        expr: probe_success{probe="frontend"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Frontend container is not serving"
+
+      - alert: ScrapeTargetDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }}"
+          description: "{{ $labels.instance }} has been down for 5 minutes."
+
+      - alert: TLSCertificateExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry{job="probe-public"} - time()) / 86400 < 14
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "TLS certificate expires in {{ $value | humanize }} days"
+          description: "Caddy renews automatically at 30 days left — renewal is failing. Check Caddy logs."
+
+  # ── API golden signals ─────────────────────────────────────────────────────
+  - name: api
+    rules:
+      - record: zync:http_requests:rate5m
+        expr: sum by (route, status) (rate(zync_http_requests_total[5m]))
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(zync_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(zync_http_requests_total[5m])), 0.001) > 0.05
+          and sum(rate(zync_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of API requests are failing (5xx)"
+          description: "Search Loki: {service=\"backend\"} | json | level=\"error\""
+
+      - alert: HighLatency
+        # Excludes the streaming agent routes, which legitimately take minutes
+        expr: |
+          histogram_quantile(0.95, sum by (le) (
+            rate(zync_http_request_duration_seconds_bucket{route!~"/api/(pipeline|diagnosis|zone).*|/metrics"}[5m])
+          )) > 2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 latency of non-streaming routes is {{ $value | humanizeDuration }}"
+
+  # ── LLM (GLM API) ──────────────────────────────────────────────────────────
+  - name: llm
+    rules:
+      - alert: LLMErrorRateHigh
+        expr: |
+          sum(rate(zync_llm_requests_total{outcome!="success"}[10m]))
+            / clamp_min(sum(rate(zync_llm_requests_total[10m])), 0.001) > 0.2
+          and sum(increase(zync_llm_requests_total[10m])) >= 5
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of GLM calls are failing"
+          description: "Check outcome label: http_401/403 = API key, http_429 = rate limit/quota, timeout = provider slow."
+
+      - alert: LLMSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(zync_llm_request_duration_seconds_bucket[15m]))) > 90
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "GLM p95 latency is {{ $value | humanizeDuration }}"
+
+      - alert: LLMTokenSpike
+        # Cost guard: 3x more tokens in the last hour than the same hour yesterday
+        expr: |
+          sum(increase(zync_llm_tokens_total[1h]))
+            > 3 * clamp_min(sum(increase(zync_llm_tokens_total[1h] offset 1d)), 10000)
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "GLM token usage is 3x higher than yesterday ({{ $value | humanize }} tokens/hour)"
+          description: "Possible abuse or a retry loop — check request rate by route and client IP in Loki."
+
+  # ── Host & containers ──────────────────────────────────────────────────────
+  - name: host
+    rules:
+      - alert: HostDiskAlmostFull
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}
+            / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) < 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Root disk has {{ $value | humanizePercentage }} free"
+          description: "Try: docker system prune -af (unused images); check Loki/Prometheus volume sizes."
+
+      - alert: HostDiskWillFillIn24h
+        expr: predict_linear(node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}[6h], 24 * 3600) < 0
+        for: 30m
+        labels: { severity: critical }
+        annotations:
+          summary: "Root disk will be full within 24 hours at the current rate"
+
+      - alert: HostMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Only {{ $value | humanizePercentage }} memory available"
+
+      - alert: HostHighCPU
+        expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.9
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "CPU at {{ $value | humanizePercentage }} for 15 minutes"
+
+      - alert: ContainerRestarting
+        expr: |
+          count by (container_label_com_docker_compose_service) (
+            changes(container_start_time_seconds{container_label_com_docker_compose_service!=""}[15m]) > 0
+          ) and on() (time() - process_start_time_seconds{job="prometheus"} > 900)
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.container_label_com_docker_compose_service }} restarted in the last 15 minutes"
+          description: "Check logs in Grafana → Explore → Loki: {service=\"{{ $labels.container_label_com_docker_compose_service }}\"}"
+
+      - alert: ContainerNearMemoryLimit
+        expr: |
+          max by (container_label_com_docker_compose_service) (
+            container_memory_working_set_bytes{container_label_com_docker_compose_service!=""}
+              / (container_spec_memory_limit_bytes{container_label_com_docker_compose_service!=""} > 0)
+          ) > 0.9
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.container_label_com_docker_compose_service }} is at {{ $value | humanizePercentage }} of its memory limit"
+
+  # ── Data safety ────────────────────────────────────────────────────────────
+  - name: data
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Postgres is down"
+
+      - alert: BackupFailed
+        expr: zync_backup_last_run_success == 0
+        labels: { severity: critical }
+        annotations:
+          summary: "The last nightly backup failed"
+          description: "See /var/log/zync-backup.log on the server."
+
+      - alert: BackupStale
+        expr: time() - zync_backup_last_success_timestamp_seconds > 26 * 3600
+        labels: { severity: critical }
+        annotations:
+          summary: "No successful backup for {{ $value | humanizeDuration }}"
+          description: "Check the cron job (/etc/cron.d/zync-backup) and /var/log/zync-backup.log."
+
+      - alert: BackupNeverRan
+        expr: absent(zync_backup_last_success_timestamp_seconds) and on() (time() - process_start_time_seconds{job="prometheus"} > 30 * 3600)
+        labels: { severity: warning }
+        annotations:
+          summary: "No backup has ever been recorded on this server"
+
+  # ── Dead man's switch: always firing, proves the alert pipeline works ─────
+  - name: meta
+    rules:
+      - alert: Watchdog
+        expr: vector(1)
+        labels: { severity: none }
+        annotations:
+          summary: "Alerting pipeline heartbeat (routed to the null receiver)"

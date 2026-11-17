@@ -1,0 +1,176 @@
+# Observability stack — deployed together with production:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
+#
+#   Prometheus   metrics + alert rules        (internal; ssh -L 9090:localhost:9090 via tunnel below)
+#   Alertmanager routes alerts to Slack/Discord
+#   Loki + Alloy container logs, searchable by request_id
+#   Grafana      dashboards + logs at https://<domain>/grafana
+#   Exporters    node (host), cAdvisor (containers), Postgres, blackbox (HTTP probes)
+#
+# Nothing here publishes a port except through Caddy (/grafana). For the
+# Prometheus/Alertmanager UIs use an SSH tunnel to the localhost-bound ports.
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v3.16.0
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:-}
+    # Render the public probe target from PUBLIC_URL, then start Prometheus
+    entrypoint: ["/bin/sh", "/etc/prometheus/entrypoint.sh"]
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  alertmanager:
+    <<: *common
+    image: prom/alertmanager:v0.35.0
+    environment:
+      SLACK_WEBHOOK_URL: ${ALERT_SLACK_WEBHOOK_URL:-}
+    entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
+    volumes:
+      - ./monitoring/alertmanager:/etc/alertmanager:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
+  grafana:
+    <<: *common
+    image: grafana/grafana:13.3.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_SERVER_ROOT_URL: ${PUBLIC_URL:-http://localhost}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  loki:
+    <<: *common
+    image: grafana/loki:3.7.10
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./monitoring/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # Ships every container's stdout/stderr to Loki.
+  # Needs the Docker socket (read-only) to discover containers.
+  alloy:
+    <<: *common
+    image: grafana/alloy:v1.22.0
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  node-exporter:
+    <<: *common
+    image: prom/node-exporter:v1.12.1
+    command:
+      - --path.rootfs=/host
+      # backup.sh writes zync_backup_*.prom here
+      - --collector.textfile.directory=/host/var/lib/node_exporter/textfile
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
+  cadvisor:
+    <<: *common
+    image: ghcr.io/google/cadvisor:0.61.0
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service
+      - --disable_metrics=percpu,sched,tcp,udp,disk,diskIO,hugetlb,referenced_memory,cpu_topology,resctrl
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    devices:
+      - /dev/kmsg
+    deploy:
+      resources:
+        limits:
+          memory: 192m
+
+  blackbox:
+    <<: *common
+    image: prom/blackbox-exporter:v0.29.1
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - ./monitoring/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 32m
+
+  postgres-exporter:
+    <<: *common
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${POSTGRES_DB:-zync}?sslmode=disable
+      DATA_SOURCE_USER: ${POSTGRES_USER:-zync}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD}
+    depends_on:
+      - postgres
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:
+  loki_data:
+  alloy_data:

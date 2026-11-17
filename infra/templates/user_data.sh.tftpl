@@ -64,6 +64,9 @@ cat > /etc/cron.d/zync-backup <<EOF
 30 18 * * * ubuntu [ -x ${app_directory}/deploy/backup.sh ] && ${app_directory}/deploy/backup.sh >> /var/log/zync-backup.log 2>&1
 EOF
 touch /var/log/zync-backup.log
+# backup.sh writes its Prometheus metrics here (read by node-exporter)
+mkdir -p /var/lib/node_exporter/textfile
+chown ubuntu:ubuntu /var/lib/node_exporter/textfile
 chown ubuntu:ubuntu /var/log/zync-backup.log
 
 echo "Bootstrap complete"

@@ -21,9 +21,15 @@
 		reverse_proxy backend:8000 {
 			# Agents stream tokens — don't buffer responses
 			flush_interval -1
-			# One ID per request, shared by Caddy's and the backend's logs
+			# One ID per request. The backend echoes it back, so it also appears
+			# in Caddy's access log (resp_headers) — search either log by it.
 			header_up X-Request-ID {http.request.uuid}
 		}
+	}
+
+	# Grafana from the monitoring stack (has its own login)
+	handle /grafana* {
+		reverse_proxy grafana:3000
 	}
 
 	handle {

@@ -1,0 +1,32 @@
+name: Uptime
+
+# External check from outside AWS. If the whole server dies, the monitoring
+# stack on it dies too — this still notices. A failed run emails the repo owner
+# (GitHub Settings → Notifications → Actions). Scheduled runs can be delayed a
+# few minutes by GitHub; pair with a free UptimeRobot/Healthchecks.io check for
+# minute-level paging.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe public endpoints
+    if: vars.PUBLIC_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET /ready (all dependencies healthy)
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 15 "${{ vars.PUBLIC_URL }}/ready"; then exit 0; fi
+            echo "attempt $i failed"; sleep 20
+          done
+          echo "::error::${{ vars.PUBLIC_URL }}/ready is failing"; exit 1
+
+      - name: GET / (frontend)
+        run: curl -fsS --max-time 15 -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" "${{ vars.PUBLIC_URL }}/"

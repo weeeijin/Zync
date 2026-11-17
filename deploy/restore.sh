@@ -15,7 +15,7 @@ REGION="${AWS_REGION:-ap-southeast-5}"
 PROJECT="zync"
 
 cd "$APP_DIR"
-compose() { docker compose -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
+compose() { docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml "$@"; }
 
 if [ $# -eq 0 ]; then
   echo "Available backups (newest last):"

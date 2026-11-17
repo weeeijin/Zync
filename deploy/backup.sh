@@ -16,7 +16,7 @@ METRICS_DIR="${METRICS_DIR:-/var/lib/node_exporter/textfile}"
 PROJECT="zync"
 
 cd "$APP_DIR"
-compose() { docker compose -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
+compose() { docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml "$@"; }
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 PREFIX="s3://${BACKUP_BUCKET}/$(date -u +%Y/%m/%d)/${STAMP}"
