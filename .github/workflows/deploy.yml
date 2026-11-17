@@ -1,9 +1,18 @@
 name: Deploy
 
+# Release:   git tag v1.2.3 && git push origin v1.2.3
+#            → tests → build/scan/publish images → deploy → smoke test
+#            → automatic rollback to the previous version if the smoke test fails
+# Rollback / redeploy: Actions → Deploy → Run workflow → version: v1.2.2
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing release tag to deploy (e.g. v1.2.2)"
+        required: true
 
 permissions:
   contents: read
@@ -16,46 +25,113 @@ concurrency:
 jobs:
   test:
     name: Tests
+    if: github.event_name == 'push'
     uses: ./.github/workflows/test.yml
+
+  images:
+    name: Images
+    if: github.event_name == 'push'
+    needs: test
+    uses: ./.github/workflows/docker-image.yml
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
 
   deploy:
     name: Deploy to production
-    needs: test
+    needs: [test, images]
+    # Run after a successful build, or directly for a manual redeploy/rollback
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' || needs.images.result == 'success')
     runs-on: ubuntu-latest
-    environment: production
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: production
+      url: ${{ vars.PUBLIC_URL }}
+    env:
+      VERSION: ${{ inputs.version || github.ref_name }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Resolve image tag
+        id: tag
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid version: $VERSION"; exit 1; }
+          echo "image_tag=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload application files
-        uses: appleboy/scp-action@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.VERSION }}
+
+      # Only runtime config goes to the server — code ships inside the images
+      - name: Upload compose and proxy config
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_KEY }}
-          source: "backend,frontend,data/known_cases,data/lixiviant_kb,data/validation,data/sample_deposits,deploy,docker-compose.yml,docker-compose.prod.yml,.dockerignore"
+          source: "docker-compose.yml,docker-compose.prod.yml,deploy"
           target: "/home/ubuntu/Zync"
 
-      - name: Rebuild, restart and smoke test
-        uses: appleboy/ssh-action@v1
+      - name: Pull images, roll out, smoke test (auto-rollback on failure)
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
-          IMAGE_TAG: ${{ github.ref_name }}
+          IMAGE_TAG: ${{ steps.tag.outputs.image_tag }}
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           key: ${{ secrets.SERVER_KEY }}
-          envs: IMAGE_TAG
+          envs: IMAGE_TAG,REGISTRY_USER,REGISTRY_TOKEN,IMAGE_PREFIX
           command_timeout: 20m
           script: |
             set -euo pipefail
             cd /home/ubuntu/Zync
             test -f .env || { echo "Missing /home/ubuntu/Zync/.env — see .env.example"; exit 1; }
 
-            COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
-            export IMAGE_TAG
-            $COMPOSE up -d --build --remove-orphans --wait --wait-timeout 300
+            export BACKEND_IMAGE="$IMAGE_PREFIX/zync-backend"
+            export FRONTEND_IMAGE="$IMAGE_PREFIX/zync-frontend"
+            compose() { docker compose -f docker-compose.yml -f docker-compose.prod.yml "$@"; }
 
-            # Readiness: backend must reach Neo4j, Postgres and Qdrant
-            $COMPOSE exec -T backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=10).read().decode())"
+            rollout() {
+              IMAGE_TAG="$1" compose pull --quiet &&
+              IMAGE_TAG="$1" compose up -d --no-build --remove-orphans --wait --wait-timeout 300
+            }
+            smoke_test() {
+              IMAGE_TAG="$1" compose exec -T backend python -c \
+                "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=10).read().decode())"
+            }
 
-            docker image prune -f
+            echo "$REGISTRY_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+
+            PREVIOUS="$(cat .deployed_version 2>/dev/null || true)"
+            echo "Deploying $IMAGE_TAG (previous: ${PREVIOUS:-none})"
+
+            if rollout "$IMAGE_TAG" && smoke_test "$IMAGE_TAG"; then
+              echo "$IMAGE_TAG" > .deployed_version
+              echo "$(date -u +%FT%TZ) $IMAGE_TAG" >> .deploy_history
+              docker image prune -f >/dev/null
+              echo "✅ Deployed $IMAGE_TAG"
+            else
+              echo "❌ $IMAGE_TAG failed health checks"
+              compose logs --tail=100 backend || true
+              if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$IMAGE_TAG" ]; then
+                echo "↩️  Rolling back to $PREVIOUS"
+                rollout "$PREVIOUS" && smoke_test "$PREVIOUS"
+              fi
+              exit 1
+            fi
+
+      - name: External smoke test
+        if: vars.PUBLIC_URL != ''
+        run: |
+          for i in $(seq 1 10); do
+            curl -fsS --max-time 10 "${{ vars.PUBLIC_URL }}/ready" && exit 0
+            sleep 6
+          done
+          echo "Public endpoint did not become ready"; exit 1
