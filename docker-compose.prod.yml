@@ -1,0 +1,79 @@
+# Production overlay. Use WITHOUT the dev override:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
+#
+# Only Caddy is reachable from outside (80/443). Databases stay on the
+# internal Docker network.
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  caddy:
+    <<: *common
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+  neo4j:
+    <<: *common
+    environment:
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1g
+      NEO4J_server_memory_pagecache_size: 512m
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  postgres:
+    <<: *common
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  qdrant:
+    <<: *common
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  backend:
+    <<: *common
+    environment:
+      APP_ENV: production
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
+  frontend:
+    <<: *common
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+volumes:
+  caddy_data:
+  caddy_config:

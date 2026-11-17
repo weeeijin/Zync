@@ -1,36 +1,39 @@
-version: "3.9"
+# Base stack — production-shaped: no published ports, no hardcoded secrets.
+#
+#   Local dev : docker compose up --build          (auto-merges docker-compose.override.yml)
+#   Production: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
+#
+# All secrets come from ./.env (see .env.example).
+name: zync
 
 services:
   # ── Neo4j — Knowledge Graph (Agent 1) ──────────────────────────────────────
   neo4j:
     image: neo4j:5.18
-    ports:
-      - "7474:7474"   # Browser UI
-      - "7687:7687"   # Bolt protocol
     environment:
-      NEO4J_AUTH: neo4j/zync1234
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
       NEO4J_PLUGINS: '["apoc"]'
     volumes:
       - neo4j_data:/data
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "zync1234", "RETURN 1"]
+      # $$ defers expansion to the container shell; strips the "neo4j/" prefix
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${NEO4J_AUTH#neo4j/}\" 'RETURN 1'"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   # ── PostgreSQL — Iteration Table (Agent 3) ──────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    ports:
-      - "5432:5432"
     environment:
-      POSTGRES_USER:     zync
-      POSTGRES_PASSWORD: zync1234
-      POSTGRES_DB:       zync
+      POSTGRES_USER: ${POSTGRES_USER:-zync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-zync}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U zync"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,9 +41,6 @@ services:
   # ── Qdrant — Vector + Hybrid Search (Agent 4) ───────────────────────────────
   qdrant:
     image: qdrant/qdrant:v1.9.2
-    ports:
-      - "6333:6333"   # REST API
-      - "6334:6334"   # gRPC
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
@@ -51,20 +51,25 @@ services:
 
   # ── FastAPI Backend ─────────────────────────────────────────────────────────
   backend:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    env_file:
-      - ./backend/.env
+    build:
+      context: .                     # repo root: the image also needs ./data
+      dockerfile: backend/Dockerfile
+    image: ${BACKEND_IMAGE:-zync-backend}:${IMAGE_TAG:-local}
     environment:
+      APP_ENV: ${APP_ENV:-development}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+      GLM_MODEL: ${GLM_MODEL:-glm-4-flash}
+      ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY:-}
+      ADMIN_SECRET: ${ADMIN_SECRET:?set ADMIN_SECRET in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
-      NEO4J_PASSWORD: zync1234
-      POSTGRES_URL: postgresql://zync:zync1234@postgres:5432/zync
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-zync}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-zync}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
     volumes:
-      - ./backend:/app
+      - fastembed_cache:/home/app/.cache/fastembed   # avoid re-downloading the embedding model
     depends_on:
       neo4j:
         condition: service_healthy
@@ -73,16 +78,12 @@ services:
       qdrant:
         condition: service_healthy
 
-  # ── React Frontend ──────────────────────────────────────────────────────────
+  # ── React Frontend (static build on nginx) ──────────────────────────────────
   frontend:
-    build: ./frontend
-    ports:
-      - "5173:5173"
-    environment:
-      VITE_BACKEND_URL: http://backend:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    build:
+      context: ./frontend
+      target: prod
+    image: ${FRONTEND_IMAGE:-zync-frontend}:${IMAGE_TAG:-local}
     depends_on:
       - backend
 
@@ -90,3 +91,4 @@ volumes:
   neo4j_data:
   postgres_data:
   qdrant_data:
+  fastembed_cache:

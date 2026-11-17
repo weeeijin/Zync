@@ -1,0 +1,31 @@
+# DOMAIN unset          → plain HTTP on :80 (e.g. reached by raw server IP)
+# DOMAIN=zync.example.com → automatic Let's Encrypt HTTPS + HTTP→HTTPS redirect
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	@backend path /api/* /health /ready
+	handle @backend {
+		reverse_proxy backend:8000 {
+			# Agents stream tokens — don't buffer responses
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:8080
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

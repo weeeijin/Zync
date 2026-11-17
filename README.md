@@ -116,18 +116,20 @@ Agent 6  Zone Prioritiser   5-step scoring: HREE value, ESG, infrastructure
 ### 1. Configure environment
 
 ```bash
-cp .env.example backend/.env
-# Open backend/.env and set:
-# GLM_API_KEY=your_key_here
-# GLM_MODEL=ILMU-GLM-5.1
-# GLM_URL=https://api.ilmu.ai/v1/chat/completions
+cp .env.example .env
+# Open .env and set at least:
+# GLM_API_KEY, GLM_MODEL, ADMIN_SECRET, NEO4J_PASSWORD, POSTGRES_PASSWORD
 ```
+
+Docker Compose reads the root `.env`. `docker compose` refuses to start if a required secret is missing.
 
 ### 2. Start everything
 
 ```bash
 docker compose up --build
 ```
+
+This merges `docker-compose.yml` with `docker-compose.override.yml`, which adds hot reload, source mounts and localhost-only ports.
 
 - Backend API → `http://localhost:8000`
 - Frontend → `http://localhost:5173`
@@ -137,17 +139,23 @@ docker compose up --build
 ### 3. Seed databases (first run only)
 
 ```bash
+# Uses the ADMIN_SECRET from your .env
+export $(grep '^ADMIN_SECRET=' .env)
+
 # Seed Neo4j with Malaysian REE historical cases
 curl -X POST http://localhost:8000/api/admin/seed \
-	-H "X-Admin-Secret: zync-admin"
+	-H "X-Admin-Secret: $ADMIN_SECRET"
 
 # Seed Qdrant with regulatory documents
 curl -X POST http://localhost:8000/api/admin/seed-qdrant \
-	-H "X-Admin-Secret: zync-admin"
+	-H "X-Admin-Secret: $ADMIN_SECRET"
 
 # Verify both are ready
 curl http://localhost:8000/api/admin/status \
-	-H "X-Admin-Secret: zync-admin"
+	-H "X-Admin-Secret: $ADMIN_SECRET"
+
+# Readiness of every backing service
+curl http://localhost:8000/ready
 ```
 
 Expected output:
@@ -165,6 +173,15 @@ Expected output:
 docker compose up
 # Stop with: docker compose down
 ```
+
+### Production
+
+```bash
+# On the server, with a .env where APP_ENV=production (and DOMAIN set for HTTPS)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+```
+
+Only Caddy (ports 80 and 443) is exposed. It terminates TLS, routes `/api`, `/health` and `/ready` to the backend and everything else to the nginx frontend. Pushing a `vX.Y.Z` tag runs the tests and then deploys through `.github/workflows/deploy.yml`.
 
 ---
 

@@ -22,7 +22,7 @@ __pycache__/
 # Env
 .env
 .env.*
-! .env.example
+!.env.example
 CLAUDE.md
 
 # Editor directories and files
@@ -35,3 +35,6 @@ CLAUDE.md
 *.njsproj
 *.sln
 *.sw?
+
+# Vite cache at repo root
+.vite/
