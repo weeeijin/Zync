@@ -25,10 +25,14 @@ else
   PUBLIC_URL="http://$IP"
 fi
 
-if [ -z "${GLM_API_KEY:-}" ]; then
-  read -r -s -p "GLM API key (Enter to skip — AI answers won't work): " GLM_API_KEY; echo
+# Answers can come from the environment (GLM_API_KEY, ALERT_WEBHOOK_URL);
+# only prompt when there is a terminal to type into
+WEBHOOK="${ALERT_WEBHOOK_URL:-}"
+if [ -t 0 ]; then
+  [ -n "${GLM_API_KEY:-}" ] || { read -r -s -p "GLM API key (Enter to skip — AI answers won't work): " GLM_API_KEY; echo; }
+  [ -n "$WEBHOOK" ] || read -r -p "Discord/Slack webhook for alerts (Enter to skip): " WEBHOOK
 fi
-read -r -p "Discord/Slack webhook for alerts (Enter to skip): " WEBHOOK
+GLM_API_KEY="${GLM_API_KEY:-}"
 
 say "Generating production .env → $ENV_FILE"
 ( umask 077

@@ -22,6 +22,8 @@ Optional but recommended:
 ```bash
 ALARM_EMAIL=you@example.com infra/demo/demo-up.sh
 # USE_HTTPS=1 infra/demo/demo-up.sh   ← real HTTPS through <ip>.sslip.io
+# No terminal to type into (e.g. Claude Code's ! prompt)? Pass the answers up front:
+# GLM_API_KEY=... ALERT_WEBHOOK_URL=... ALARM_EMAIL=... infra/demo/demo-up.sh
 ```
 
 🎬 **Show:** `terraform apply` creating the VPC, firewall, encrypted disk, backup bucket, alarms, budget and OIDC role. Then the script filling in GitHub secrets on its own. Confirm the AWS email subscription.
@@ -108,6 +110,7 @@ deploy/restore.sh <backup> qdrant   # restore one database (type 'restore' to co
 
 ```bash
 infra/demo/demo-down.sh   # type 'destroy'
+CONFIRM=destroy infra/demo/demo-down.sh   # same, without the prompt
 ```
 
 Check the AWS console: **EC2 → Instances** should be empty, and **Billing → Bills** should show only cents.

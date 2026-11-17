@@ -2,6 +2,7 @@
 # Delete the showcase environment so it stops costing anything.
 #
 #   infra/demo/demo-down.sh
+#   CONFIRM=destroy infra/demo/demo-down.sh   # no prompt (e.g. no terminal)
 #
 # Removes every AWS resource Terraform created (server, IP, backups, keys)
 # and the GitHub settings that point at it, so the uptime check goes quiet.
@@ -12,8 +13,11 @@ INFRA="$(dirname "$HERE")"
 KEY="${DEPLOY_KEY:-$HOME/.ssh/zync_deploy}"
 REPO="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 
-read -r -p "This permanently deletes the demo server and its backups. Type 'destroy' to continue: " ok
-[ "$ok" = "destroy" ] || { echo "Aborted."; exit 1; }
+ok="${CONFIRM:-}"
+if [ -z "$ok" ] && [ -t 0 ]; then
+  read -r -p "This permanently deletes the demo server and its backups. Type 'destroy' to continue: " ok
+fi
+[ "$ok" = "destroy" ] || { echo "Aborted. Type 'destroy' at the prompt, or run: CONFIRM=destroy $0" >&2; exit 1; }
 
 cd "$INFRA"
 [ -f backend_override.tf ] || cp "$HERE/backend_override.tf" backend_override.tf
