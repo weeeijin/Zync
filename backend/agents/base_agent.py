@@ -1,7 +1,12 @@
 import httpx
 import json
+import logging
+import time
 from typing import AsyncGenerator
 from config import GLM_API_KEY, GLM_URL, GLM_MODEL
+from observability import LLM_FIRST_TOKEN, record_llm_usage, track_llm_call
+
+logger = logging.getLogger("zync.llm")
 
 HEADERS = {
     "Authorization": f"Bearer {GLM_API_KEY}",
@@ -73,10 +78,12 @@ async def call_glm(
         stream=False, json_mode=json_mode,
     )
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        res = await client.post(GLM_URL, json=payload, headers=HEADERS)
-        res.raise_for_status()
-        data = res.json()
+    with track_llm_call("call", GLM_MODEL):
+        async with httpx.AsyncClient(timeout=120) as client:
+            res = await client.post(GLM_URL, json=payload, headers=HEADERS)
+            res.raise_for_status()
+            data = res.json()
+    record_llm_usage(GLM_MODEL, data.get("usage"))
 
     message = data["choices"][0]["message"]
 
@@ -115,56 +122,77 @@ async def stream_glm(
         stream=True, json_mode=json_mode,
     )
 
-    full_output    = ""
-    full_reasoning = ""
-
     try:
-        async with httpx.AsyncClient(timeout=180) as client:
-            async with client.stream(
-                "POST", GLM_URL, json=payload, headers=HEADERS
-            ) as response:
-                response.raise_for_status()
-
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-
-                    raw = line[6:].strip()
-
-                    if raw == "[DONE]":
-                        # Final chunk — send complete assembled output
-                        yield {
-                            "type":      "done",
-                            "output":    full_output,
-                            "reasoning": full_reasoning,
-                        }
-                        return
-
-                    try:
-                        chunk = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-
-                    delta = chunk["choices"][0].get("delta", {})
-
-                    # Reasoning trace (thinking mode — XAI block)
-                    reasoning_delta = delta.get("reasoning_content", "")
-                    if reasoning_delta:
-                        full_reasoning += reasoning_delta
-                        yield {"type": "reasoning", "text": reasoning_delta}
-
-                    # Answer text
-                    output_delta = delta.get("content", "")
-                    if output_delta:
-                        full_output += output_delta
-                        yield {"type": "output", "text": output_delta}
-
+        with track_llm_call("stream", GLM_MODEL):
+            async for chunk in _stream_chunks(payload):
+                yield chunk
     except httpx.HTTPStatusError as e:
+        logger.warning("GLM API returned HTTP %s", e.response.status_code)
         yield {"type": "error", "message": f"GLM API error: {e.response.status_code}"}
     except httpx.TimeoutException:
+        logger.warning("GLM API timed out")
         yield {"type": "error", "message": "GLM API timeout — model took too long"}
-    except Exception as e:
-        yield {"type": "error", "message": str(e)}
+    except Exception:
+        # Full details go to the logs only — never to the client
+        logger.exception("GLM streaming call failed")
+        yield {"type": "error", "message": "GLM request failed — please try again"}
+
+
+async def _stream_chunks(payload: dict) -> AsyncGenerator[dict, None]:
+    """Raw SSE parsing for stream_glm; raises on transport/HTTP errors."""
+    full_output    = ""
+    full_reasoning = ""
+    started        = time.perf_counter()
+    first_token    = True
+
+    async with httpx.AsyncClient(timeout=180) as client:
+        async with client.stream(
+            "POST", GLM_URL, json=payload, headers=HEADERS
+        ) as response:
+            response.raise_for_status()
+
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+
+                raw = line[6:].strip()
+
+                if raw == "[DONE]":
+                    # Final chunk — send complete assembled output
+                    yield {
+                        "type":      "done",
+                        "output":    full_output,
+                        "reasoning": full_reasoning,
+                    }
+                    return
+
+                try:
+                    chunk = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+
+                # GLM reports token usage on the last chunk
+                record_llm_usage(GLM_MODEL, chunk.get("usage"))
+
+                choices = chunk.get("choices") or [{}]
+                delta = choices[0].get("delta", {})
+
+                reasoning_delta = delta.get("reasoning_content", "")
+                output_delta = delta.get("content", "")
+
+                if first_token and (reasoning_delta or output_delta):
+                    LLM_FIRST_TOKEN.labels(model=GLM_MODEL).observe(time.perf_counter() - started)
+                    first_token = False
+
+                # Reasoning trace (thinking mode — XAI block)
+                if reasoning_delta:
+                    full_reasoning += reasoning_delta
+                    yield {"type": "reasoning", "text": reasoning_delta}
+
+                # Answer text
+                if output_delta:
+                    full_output += output_delta
+                    yield {"type": "output", "text": output_delta}
 
 
 # ─── 3. Tool call helper ──────────────────────────────────────────────────────
@@ -197,9 +225,11 @@ async def call_glm_with_tools(
                 "tools":       tools,
             }
 
-            res = await client.post(GLM_URL, json=payload, headers=HEADERS)
-            res.raise_for_status()
-            data = res.json()
+            with track_llm_call("tools", GLM_MODEL):
+                res = await client.post(GLM_URL, json=payload, headers=HEADERS)
+                res.raise_for_status()
+                data = res.json()
+            record_llm_usage(GLM_MODEL, data.get("usage"))
 
             message = data["choices"][0]["message"]
             messages.append(message)  # Add assistant turn to history

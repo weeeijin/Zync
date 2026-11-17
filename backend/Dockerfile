@@ -22,6 +22,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     APP_ENV=production \
     WEB_CONCURRENCY=2 \
+    LOG_FORMAT=json \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus \
     FASTEMBED_CACHE_PATH=/home/app/.cache/fastembed
 
 # Pick up OS security fixes released after the base image was built
@@ -35,6 +37,7 @@ RUN groupadd --system --gid 10001 app \
  && chown -R app:app /home/app
 
 COPY --from=builder /opt/venv /opt/venv
+COPY --chmod=0755 backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Mirror the repo layout so ../../data paths resolve: /srv/zync/{backend,data}
 WORKDIR /srv/zync/backend
@@ -47,5 +50,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else 1)"
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 # WEB_CONCURRENCY sets the worker count; proxy headers come from Caddy
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

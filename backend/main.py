@@ -1,3 +1,7 @@
+from observability import ObservabilityMiddleware, configure_logging, metrics_endpoint
+
+configure_logging()  # before anything else logs
+
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from routes.pipeline import router as pipeline_router
@@ -17,6 +21,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Outermost: sees every request, including CORS preflights
+app.add_middleware(ObservabilityMiddleware)
+
+# Prometheus scrape target — internal only (Caddy doesn't route /metrics)
+app.add_route("/metrics", metrics_endpoint, include_in_schema=False)
 
 app.include_router(pipeline_router, prefix="/api")
 app.include_router(validate_router, prefix="/api")

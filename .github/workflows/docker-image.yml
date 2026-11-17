@@ -30,6 +30,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
       - run: docker compose config --quiet
+      - name: Validate Caddyfile
+        run: >
+          docker run --rm -e DOMAIN=:80
+          -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro"
+          caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   image:
     name: Build, scan & publish (${{ matrix.service }})

@@ -21,6 +21,8 @@
 		reverse_proxy backend:8000 {
 			# Agents stream tokens — don't buffer responses
 			flush_interval -1
+			# One ID per request, shared by Caddy's and the backend's logs
+			header_up X-Request-ID {http.request.uuid}
 		}
 	}
 

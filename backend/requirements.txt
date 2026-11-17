@@ -9,6 +9,9 @@ python-multipart==0.0.34
 fastembed==0.9.1
 pillow==13.0.0          # transitive (fastembed) — pinned to a patched release
 
+# Observability
+prometheus-client==0.26.0
+
 # Database
 neo4j==5.28.8
 asyncpg==0.30.0
