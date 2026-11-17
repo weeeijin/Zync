@@ -12,7 +12,9 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY backend/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+# Packaging tools aren't needed at runtime — drop them (and their CVEs)
+RUN pip install -r /tmp/requirements.txt \
+ && pip uninstall -y pip setuptools wheel
 
 # ── Stage 2: minimal runtime image, non-root ────────────────────────────────
 FROM python:3.11-slim AS runtime
@@ -26,10 +28,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus \
     FASTEMBED_CACHE_PATH=/home/app/.cache/fastembed
 
-# Pick up OS security fixes released after the base image was built
+# Pick up OS security fixes released after the base image was built, and
+# remove the base image's pip/setuptools (unused at runtime)
 RUN apt-get update \
  && apt-get upgrade -y --no-install-recommends \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && (python -m pip uninstall -y pip setuptools wheel || true)
 
 RUN groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --create-home app \

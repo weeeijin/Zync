@@ -84,6 +84,20 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
+      - name: Smoke test the image
+        run: |
+          if [ "${{ matrix.service }}" = backend ]; then
+            # Every module must import inside the real image (catches missing deps)
+            docker run --rm -e APP_ENV=development --entrypoint python "$IMAGE:scan" -c \
+              "import main, rag.hybrid_search, rag.graph_rag, tools.pdf_extractor, fastembed, pypdf; print('backend imports OK')"
+            docker run --rm --entrypoint sh "$IMAGE:scan" -c 'id -u | grep -qx 10001 && echo "runs as non-root"'
+          else
+            cid=$(docker run -d "$IMAGE:scan")
+            for i in $(seq 1 10); do docker exec "$cid" wget -qO- http://127.0.0.1:8080/healthz && break; sleep 1; done
+            docker exec "$cid" wget -qO- http://127.0.0.1:8080/ | grep -q '<div id="root">' && echo "frontend serves index.html"
+            docker rm -f "$cid" >/dev/null
+          fi
+
       - name: Scan image for vulnerabilities (report)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

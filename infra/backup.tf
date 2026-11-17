@@ -54,6 +54,7 @@ resource "aws_kms_alias" "main" {
 }
 
 # ── S3 bucket for nightly database dumps ─────────────────────────────────────
+# trivy:ignore:AVD-AWS-0089 — access logging would need a second bucket; the instance role is the only writer and CloudTrail records API access
 resource "aws_s3_bucket" "backups" {
   bucket = local.backup_bucket
 
