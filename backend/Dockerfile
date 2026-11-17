@@ -24,6 +24,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     WEB_CONCURRENCY=2 \
     FASTEMBED_CACHE_PATH=/home/app/.cache/fastembed
 
+# Pick up OS security fixes released after the base image was built
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --create-home app \
  && mkdir -p /home/app/.cache/fastembed \
