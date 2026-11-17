@@ -1,9 +1,11 @@
 locals {
-  name           = "${var.project}-${var.environment}"
-  create_dns     = var.domain_name != "" && var.route53_zone_id != ""
-  create_alarms  = var.alarm_email != ""
-  app_directory  = "/home/ubuntu/Zync"
-  backup_bucket  = "${local.name}-backups-${data.aws_caller_identity.current.account_id}"
+  name          = "${var.project}-${var.environment}"
+  create_dns    = var.domain_name != "" && var.route53_zone_id != ""
+  create_alarms = var.alarm_email != ""
+  app_directory = "/home/ubuntu/Zync"
+  # Region in the name: bucket names are global and stay reserved for a while
+  # after deletion, so moving regions must not collide with the old bucket
+  backup_bucket  = "${local.name}-backups-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
   public_ingress = { http = 80, https = 443 }
 }
 

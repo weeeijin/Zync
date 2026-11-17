@@ -9,7 +9,7 @@ A script for recording the pipeline running for real. The whole session takes ab
 ```bash
 brew install awscli gh terraform   # skip the ones you already have
 aws login                          # browser sign-in, short-lived credentials (AWS CLI ≥ 2.32), no access keys
-aws configure set region ap-southeast-1
+aws configure set region us-east-1   # new AWS accounts can only launch servers in a few US regions
 gh auth login
 ```
 
@@ -119,7 +119,8 @@ Check the AWS console: **EC2 → Instances** should be empty, and **Billing → 
 | Symptom | Fix |
 |---|---|
 | `InvalidParameterCombination` / instance type not eligible | In `infra/demo/demo.tfvars`, set `instance_type = "t3.large"` |
-| `OptInRequired` for ap-southeast-5 | The demo uses Singapore by default. Enable Malaysia under Account → AWS Regions to use it |
+| `This account is currently blocked` when creating the instance | New / Free plan accounts may only launch EC2 in `us-east-1`, `us-east-2` or `us-west-2`. Keep the demo's default `us-east-1` |
+| `OptInRequired` for ap-southeast-5 | Enable Malaysia under Account → AWS Regions, then set `aws_region` in `infra/demo/demo.tfvars` |
 | Deploy: `Missing .env` | Re-run `infra/demo/connect-github.sh` |
 | Deploy can't SSH | Check that `AWS_DEPLOY_ROLE_ARN` is set: `gh variable list` |
 | HTTPS certificate error with `USE_HTTPS=1` | Let's Encrypt may be rate-limiting sslip.io. Re-run `connect-github.sh` without `USE_HTTPS` and redeploy |

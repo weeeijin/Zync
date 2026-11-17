@@ -17,9 +17,12 @@ read -r -p "This permanently deletes the demo server and its backups. Type 'dest
 
 cd "$INFRA"
 [ -f backend_override.tf ] || cp "$HERE/backend_override.tf" backend_override.tf
-REGION="$(terraform output -raw aws_region 2>/dev/null || echo ap-southeast-1)"
+# Destroy in the region the resources actually live in (from state), even if
+# demo.tfvars has since been pointed somewhere else
+REGION="$(terraform output -raw aws_region 2>/dev/null || sed -n 's/^aws_region *= *"\(.*\)"/\1/p' "$HERE/demo.tfvars")"
 terraform destroy -input=false -auto-approve \
   -var-file="$HERE/demo.tfvars" \
+  -var "aws_region=$REGION" \
   -var "ssh_public_key=$(cat "$KEY.pub")"
 
 # Snapshots are created by AWS Data Lifecycle Manager, not Terraform, so
