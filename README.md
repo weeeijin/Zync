@@ -6,6 +6,19 @@
 
 Malaysia sits on RM 1 trillion in Rare Earth Element (REE) resources but lacks the hydrometallurgical engineering depth to process them independently. Every critical processing decision — which lixiviant to use, why yields are dropping, which zone to invest in — currently depends on foreign expertise or goes unmade. Zync changes that.
 
+> **About this repository: my DevOps project**
+>
+> The Zync application (the multi-agent AI backend, knowledge graph and React frontend) was built by **Team Gunners** at a hackathon; the original lives at [hmhhmm/Zync](https://github.com/hmhhmm/Zync). Their commits are kept in the history.
+>
+> **What I built on top of it ([@weeeijin](https://github.com/weeeijin)):** the production platform that takes the app from a laptop to the cloud.
+> - **CI/CD:** GitHub Actions for tests, security scans and image builds, plus tag-based releases with smoke tests and automatic rollback
+> - **Security:** CodeQL, Trivy, gitleaks, SBOM and provenance, GitHub OIDC (no stored cloud keys), hardened non-root containers
+> - **Infrastructure as code:** Terraform on AWS (VPC, EC2, KMS, encrypted S3 backups, alarms, budget), with a one-command demo environment
+> - **Observability:** Prometheus, Grafana, Loki and Alertmanager, with app instrumentation for HTTP and LLM metrics and request tracing
+> - **Operations:** automated backups and restore, plus an incident runbook
+>
+> **Start here:** [DevOps & Operations](#devops--operations) · [Showcase walkthrough](docs/DEMO.md) · [Runbook](docs/RUNBOOK.md)
+
 ---
 
 ## Demo
