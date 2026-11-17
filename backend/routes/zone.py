@@ -1,6 +1,7 @@
 import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+from errors import safe_error
 from schemas.input_schema import ZonePrioritisationRequest
 from agents.agent6_zone_prioritiser import run_zone_prioritiser
 
@@ -46,7 +47,7 @@ async def zone_prioritisation(body: ZonePrioritisationRequest):
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            yield _event({"status": "error", "message": str(e)})
+            yield _event(safe_error(e, "zone_prioritisation"))
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

@@ -27,6 +27,9 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS prod
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
+# The base image already drops root; declare it explicitly so scanners and
+# runtimes enforce it (uid 101 = nginx)
+USER 101
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1

@@ -1,6 +1,7 @@
 import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+from errors import safe_error
 from schemas.input_schema import PipelineRequest
 from agents.agent0_router    import route_request
 from agents.agent1_historian import get_historical_context
@@ -122,7 +123,7 @@ async def run_pipeline(body: PipelineRequest):
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            yield _event({"status": "error", "message": str(e)})
+            yield _event(safe_error(e, "pipeline"))
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

@@ -1,6 +1,7 @@
 import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+from errors import safe_error
 from schemas.input_schema import DiagnosisRequest
 from agents.agent_diagnosis import run_diagnosis
 
@@ -51,7 +52,7 @@ async def diagnose(body: DiagnosisRequest):
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            yield _event({"status": "error", "message": str(e)})
+            yield _event(safe_error(e, "diagnosis"))
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
