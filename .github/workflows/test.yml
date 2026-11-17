@@ -14,45 +14,45 @@ concurrency:
   group: test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Third-party and first-party actions are pinned to commit SHAs (tags can be moved).
 jobs:
   frontend:
-    name: Check frontend
+    name: Frontend — lint, audit, build
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run frontend lint
+      - name: Lint
         run: npm run lint
 
-      - name: Build frontend
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Build
         run: npm run build
 
   backend:
-    name: Check backend
+    name: Backend — lint, audit, test
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
           cache: pip
@@ -60,8 +60,25 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
 
-      - name: Install backend dependencies
+      - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run backend unit tests
-        run: pytest -c pytest.ini tests/unit
+      - name: Lint (ruff — errors, bugbear, bandit security rules)
+        run: ruff check --output-format=github .
+
+      - name: Audit dependencies for known CVEs
+        run: pip-audit -r requirements.txt
+
+      - name: Unit + integration tests with coverage
+        # Live GLM tests skip themselves unless GLM_API_KEY is set
+        run: >
+          pytest -c pytest.ini tests
+          --cov=. --cov-report=term-missing:skip-covered --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          if-no-files-found: ignore
