@@ -184,10 +184,27 @@ See [DevOps & Operations](#devops--operations) below.
 
 ## DevOps & Operations
 
+An end-to-end delivery and operations pipeline built around Zync: every push is tested and scanned, every release is an immutable image deployed by a git tag with automatic rollback, the infrastructure is Terraform, and production is observed through metrics, logs and alerts.
+
+### Highlights
+
+| Stage | What's in place |
+|---|---|
+| **CI** | Lint (ruff, eslint), unit tests with coverage (pytest), dependency audits (pip-audit, npm audit), frontend build, all on every push and PR |
+| **Security** | gitleaks secret scanning over full history, CodeQL (Python, JS/TS, Actions), Trivy scans of images (CRITICAL blocks the build) and IaC, SHA-pinned actions, Dependabot. **0 open code-scanning alerts** |
+| **Containers** | Multi-stage, non-root images (uid 10001 / 101), healthchecks, allowlist `.dockerignore`, packaging tools stripped, smoke-tested in CI. Published to GHCR with SBOM and build provenance |
+| **CD** | `git tag vX.Y.Z` → tests → images → deploy. GitHub OIDC opens SSH for the runner's IP only, the server pulls the exact version, `/ready` is smoke-tested, failures roll back automatically, SSH is closed again |
+| **Infrastructure as code** | Terraform for AWS: VPC with flow logs, least-privilege firewall, IMDSv2 EC2 with KMS-encrypted disk, Elastic IP, encrypted and versioned S3 backups, daily EBS snapshots, CloudWatch auto-recovery and alarms, a budget alarm, and a keyless GitHub deploy role |
+| **Observability** | Prometheus, Grafana, Loki, Alloy and Alertmanager. HTTP and GLM metrics (latency, time to first token, tokens), JSON logs with a request ID that follows each request from Caddy to the backend, 22 alert rules, a provisioned dashboard, blackbox probes and an external uptime check |
+| **Recovery** | Nightly Postgres, Neo4j and Qdrant backups with checksums to encrypted S3, a guarded restore script, one-click manual rollback, and a [runbook](docs/RUNBOOK.md) for every alert |
+| **App hardening** | Production refuses to start with default secrets, errors return an ID instead of a stack trace, and the admin secret is compared in constant time. `/health` and `/ready` are separate probes |
+
+### Pipeline
+
 ```text
  git push / PR ──► Test ───────── ruff · pip-audit · npm audit · pytest + coverage · eslint · build
              ├──► Security ───── gitleaks (history) · CodeQL (Python/JS/Actions) · Trivy IaC
-             ├──► Docker CI ──── build → Trivy image scan (blocks CRITICAL) → GHCR + SBOM + provenance
+             ├──► Docker CI ──── build → smoke test → Trivy image scan (blocks CRITICAL) → GHCR + SBOM + provenance
              ├──► Terraform ──── fmt · validate · Trivy (blocks MEDIUM+)
              └──► Monitoring ─── promtool · amtool · loki · alloy · shellcheck
 
@@ -197,7 +214,7 @@ See [DevOps & Operations](#devops--operations) below.
                                       ├─ smoke test /ready ─✗─► automatic rollback
                                       └─ external smoke test → close SSH
 
- Production (AWS ap-southeast-5, Terraform)
+ Production (AWS, Terraform; region configurable)
    Internet ─► Caddy (auto-HTTPS, headers, 12MB limit) ─┬─► frontend (nginx, non-root)
                                                          ├─► backend  (FastAPI, non-root) ─► Neo4j · Postgres · Qdrant
                                                          └─► Grafana
@@ -206,20 +223,57 @@ See [DevOps & Operations](#devops--operations) below.
    Nightly backups → encrypted S3 · daily EBS snapshots · uptime check from GitHub every 15 min
 ```
 
+### Where everything lives
+
 | Area | Where |
 |---|---|
 | CI/CD workflows | [`.github/workflows/`](.github/workflows/) |
 | Infrastructure as code | [`infra/`](infra/) (see its [README](infra/README.md) for first-time setup) |
-| Compose stacks | `docker-compose.yml` (base) · `.override.yml` (dev) · `.prod.yml` · `.monitoring.yml` |
+| One-command demo environment | [`infra/demo/`](infra/demo/): `demo-up.sh`, `connect-github.sh`, `demo-down.sh` |
+| Compose stacks | `docker-compose.yml` (base) · `.override.yml` (dev) · `.prod.yml` · `.monitoring.yml` · `.monitoring.local.yml` |
 | Monitoring config, alerts, dashboards | [`monitoring/`](monitoring/) |
+| App instrumentation | [`backend/observability.py`](backend/observability.py) · [`backend/health.py`](backend/health.py) · [`backend/errors.py`](backend/errors.py) |
 | Backups and restore | [`deploy/backup.sh`](deploy/backup.sh) · [`deploy/restore.sh`](deploy/restore.sh) |
-| What to do when an alert fires | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) |
+| Incident response | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) |
+| Showcase walkthrough | [`docs/DEMO.md`](docs/DEMO.md) |
 
 **Release:** `git tag v1.0.0 && git push origin v1.0.0`. **Roll back:** Actions → Deploy → Run workflow → enter a previous version.
 
-**Try it yourself:**
-- **Locally, for free:** `docker compose -f docker-compose.yml -f docker-compose.override.yml -f docker-compose.monitoring.yml -f docker-compose.monitoring.local.yml up -d`, then open Grafana at http://localhost:3000/grafana.
-- **On AWS for a day:** `infra/demo/demo-up.sh` creates everything, and `infra/demo/demo-down.sh` deletes it. See [`docs/DEMO.md`](docs/DEMO.md) for the full showcase walkthrough: release, incident, automatic rollback, backup and restore.
+### Try it yourself
+
+**Locally, for free.** The full app plus the monitoring stack:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.override.yml \
+  -f docker-compose.monitoring.yml -f docker-compose.monitoring.local.yml up -d
+open http://localhost:3000/grafana        # Zync — Production Overview dashboard
+
+# Make an alert fire, then resolve it
+docker compose stop postgres              # PostgresDown + BackendNotReady after ~2 min
+docker compose start postgres
+```
+
+Host panels (CPU, disk) and the `node`/`cadvisor` targets stay empty on macOS; they need a Linux server.
+
+**On AWS, for a day.** Sign in with `aws login`, then:
+
+```bash
+ALARM_EMAIL=you@example.com infra/demo/demo-up.sh     # infrastructure + server, wires GitHub secrets
+CREATE_SERVER=false ALARM_EMAIL=you@example.com infra/demo/demo-up.sh   # everything except the EC2 server
+CONFIRM=destroy infra/demo/demo-down.sh               # delete it all
+```
+
+The demo runs in `us-east-1`, where new AWS accounts can launch EC2, and has a US$5 budget alarm. `CREATE_SERVER=false` is for accounts whose vCPU quota is still too low for the server. See [`docs/DEMO.md`](docs/DEMO.md) for the scene-by-scene showcase: release, incident, automatic rollback, backup and restore.
+
+### Lessons from running it for real
+
+| Problem | Fix |
+|---|---|
+| Trivy blocked the frontend image (CRITICAL OpenSSL/brotli CVEs in the old base) | Upgraded to nginx 1.30 and `apk upgrade` at build time |
+| A FastAPI upgrade silently dropped the `/api` prefix from metric labels | Route-template resolver plus a unit test that pins the labels |
+| `terraform apply` failed on a colon in a DLM policy description, which `validate` didn't catch | Fixed the description. Some API rules only surface against the real cloud |
+| New AWS accounts can only launch EC2 in a few US regions, with a 1 vCPU quota | Moved the demo to `us-east-1`, added the `create_server` toggle, region-scoped the bucket name |
+| Long-lived access keys are easy to leak | Local access uses `aws login` (short-lived credentials); CI uses GitHub OIDC with no stored AWS keys |
 
 ---
 
@@ -283,9 +337,12 @@ Zync/
 │       ├── hooks/       # Data fetching and streaming hooks
 │       └── modules/     # Diagnosis, Lixiviant, Zone Strategy
 ├── infra/               # Terraform: AWS VPC, EC2, S3 backups, alarms, GitHub OIDC
+│   └── demo/            # One-command demo environment up / down
 ├── monitoring/          # Prometheus, alert rules, Alertmanager, Loki, Alloy, Grafana
 ├── deploy/              # Caddyfile, backup.sh, restore.sh
-├── docs/RUNBOOK.md      # Operations and incident response
+├── docs/
+│   ├── RUNBOOK.md       # Operations and incident response
+│   └── DEMO.md          # Showcase walkthrough (AWS or local)
 ├── .github/workflows/   # CI, security, images, Terraform, deploy, uptime
 ├── docker-compose.yml   # + .override (dev) / .prod / .monitoring overlays
 ├── .env.example
