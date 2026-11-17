@@ -18,7 +18,7 @@ To create a short-lived showcase environment and connect GitHub to it automatica
 ## First-time setup (long-lived environment)
 
 ```bash
-# 0. Prerequisites: AWS CLI logged in (aws configure / aws sso login), Terraform >= 1.10
+# 0. Prerequisites: AWS CLI signed in (`aws login`, or `aws sso login` with IAM Identity Center; avoid long-lived access keys), Terraform >= 1.10
 cd infra
 
 # 1. Remote state bucket (once) — see backend.hcl.example

@@ -8,7 +8,8 @@ A script for recording the pipeline running for real. The whole session takes ab
 
 ```bash
 brew install awscli gh terraform   # skip the ones you already have
-aws configure                      # access key from the AWS console (IAM → Users → Security credentials)
+aws login                          # browser sign-in, short-lived credentials (AWS CLI ≥ 2.32), no access keys
+aws configure set region ap-southeast-1
 gh auth login
 ```
 
