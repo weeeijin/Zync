@@ -176,12 +176,44 @@ docker compose up
 
 ### Production
 
-```bash
-# On the server, with a .env where APP_ENV=production (and DOMAIN set for HTTPS)
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+See [DevOps & Operations](#devops--operations) below.
+
+---
+
+## DevOps & Operations
+
+```text
+ git push / PR ──► Test ───────── ruff · pip-audit · npm audit · pytest + coverage · eslint · build
+             ├──► Security ───── gitleaks (history) · CodeQL (Python/JS/Actions) · Trivy IaC
+             ├──► Docker CI ──── build → Trivy image scan (blocks CRITICAL) → GHCR + SBOM + provenance
+             ├──► Terraform ──── fmt · validate · Trivy (blocks MEDIUM+)
+             └──► Monitoring ─── promtool · amtool · loki · alloy · shellcheck
+
+ git tag vX.Y.Z ─► Test ─► Images ─► Deploy (env: production)
+                                      ├─ OIDC → open SSH for this runner only
+                                      ├─ pull exact image tag, compose up --wait
+                                      ├─ smoke test /ready ─✗─► automatic rollback
+                                      └─ external smoke test → close SSH
+
+ Production (AWS ap-southeast-5, Terraform)
+   Internet ─► Caddy (auto-HTTPS, headers, 12MB limit) ─┬─► frontend (nginx, non-root)
+                                                         ├─► backend  (FastAPI, non-root) ─► Neo4j · Postgres · Qdrant
+                                                         └─► Grafana
+   Prometheus ◄── backend /metrics · node · cAdvisor · Postgres · Qdrant · blackbox probes
+   Alertmanager ─► Slack/Discord      Loki ◄── Alloy ◄── all container logs
+   Nightly backups → encrypted S3 · daily EBS snapshots · uptime check from GitHub every 15 min
 ```
 
-Only Caddy (ports 80 and 443) is exposed. It terminates TLS, routes `/api`, `/health` and `/ready` to the backend and everything else to the nginx frontend. Pushing a `vX.Y.Z` tag runs the tests and then deploys through `.github/workflows/deploy.yml`.
+| Area | Where |
+|---|---|
+| CI/CD workflows | [`.github/workflows/`](.github/workflows/) |
+| Infrastructure as code | [`infra/`](infra/) (see its [README](infra/README.md) for first-time setup) |
+| Compose stacks | `docker-compose.yml` (base) · `.override.yml` (dev) · `.prod.yml` · `.monitoring.yml` |
+| Monitoring config, alerts, dashboards | [`monitoring/`](monitoring/) |
+| Backups and restore | [`deploy/backup.sh`](deploy/backup.sh) · [`deploy/restore.sh`](deploy/restore.sh) |
+| What to do when an alert fires | [`docs/RUNBOOK.md`](docs/RUNBOOK.md) |
+
+**Release:** `git tag v1.0.0 && git push origin v1.0.0`. **Roll back:** Actions → Deploy → Run workflow → enter a previous version.
 
 ---
 
@@ -196,7 +228,8 @@ Only Caddy (ports 80 and 443) is exposed. It terminates TLS, routes `/api`, `/he
 | `/api/admin/seed` | POST | Seed Neo4j with Malaysian REE case history |
 | `/api/admin/seed-qdrant` | POST | Seed Qdrant with regulatory documents |
 | `/api/admin/status` | GET | Verify all databases are ready |
-| `/health` | GET | Backend health check |
+| `/health` | GET | Liveness: the process is up |
+| `/ready` | GET | Readiness: Postgres, Neo4j and Qdrant all reachable (503 if not) |
 
 ---
 
@@ -243,9 +276,13 @@ Zync/
 │       ├── components/  # UI, layout, trust, landing
 │       ├── hooks/       # Data fetching and streaming hooks
 │       └── modules/     # Diagnosis, Lixiviant, Zone Strategy
-├── docker-compose.yml
+├── infra/               # Terraform: AWS VPC, EC2, S3 backups, alarms, GitHub OIDC
+├── monitoring/          # Prometheus, alert rules, Alertmanager, Loki, Alloy, Grafana
+├── deploy/              # Caddyfile, backup.sh, restore.sh
+├── docs/RUNBOOK.md      # Operations and incident response
+├── .github/workflows/   # CI, security, images, Terraform, deploy, uptime
+├── docker-compose.yml   # + .override (dev) / .prod / .monitoring overlays
 ├── .env.example
-├── CLAUDE.md            # Developer guide
 └── README.md
 ```
 
