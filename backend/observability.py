@@ -115,6 +115,27 @@ LLM_TOKENS = Counter(
 _SKIP_ACCESS_LOG = {"/health", "/metrics"}
 
 
+def route_template(scope) -> str:
+    """Full route template (e.g. /api/zone) for metrics labels.
+
+    Newer FastAPI versions give the matched route only its own path, without
+    the include_router() prefix. Find where the route's pattern matches the
+    real path; everything before that is the prefix. Unmatched requests
+    (404s, scanners) collapse to one label to keep cardinality bounded.
+    """
+    route = scope.get("route")
+    template = getattr(route, "path", None)
+    if not template:
+        return "unmatched"
+    path = scope.get("path") or ""
+    regex = getattr(route, "path_regex", None)
+    if regex is not None and not regex.match(path):
+        for i, char in enumerate(path):
+            if char == "/" and i > 0 and regex.match(path[i:]):
+                return path[:i] + template
+    return template
+
+
 def record_llm_usage(model: str, usage: dict | None) -> None:
     if not usage:
         return
@@ -191,7 +212,7 @@ class ObservabilityMiddleware:
             duration = time.perf_counter() - started
             HTTP_IN_PROGRESS.labels(method=method).dec()
             # Route template (e.g. /api/zone), never the raw path → bounded cardinality
-            route = getattr(scope.get("route"), "path", None) or "unmatched"
+            route = route_template(scope)
             HTTP_REQUESTS.labels(method=method, route=route, status=str(status)).inc()
             HTTP_DURATION.labels(method=method, route=route).observe(duration)
 

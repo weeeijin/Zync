@@ -1,0 +1,23 @@
+# Run the monitoring stack on your laptop (free, no cloud):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml \
+#     -f docker-compose.monitoring.yml -f docker-compose.monitoring.local.yml up -d
+#
+#   Grafana     → http://localhost:3000/grafana   (admin / GRAFANA_ADMIN_PASSWORD)
+#   Prometheus  → http://localhost:9090
+#   Alertmanager→ http://localhost:9093
+#
+# node-exporter and cAdvisor read Linux host paths (/, /sys, /var/lib/docker)
+# that don't exist on macOS/Windows Docker Desktop, so they're disabled here.
+services:
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: http://localhost:3000/grafana/
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  node-exporter:
+    profiles: ["linux-host"]
+
+  cadvisor:
+    profiles: ["linux-host"]
