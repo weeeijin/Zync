@@ -8,7 +8,7 @@ Malaysia sits on RM 1 trillion in Rare Earth Element (REE) resources but lacks t
 
 > **About this repository: my DevOps project**
 >
-> The Zync application (the multi-agent AI backend, knowledge graph and React frontend) was built by **Team Gunners** at a hackathon; the original lives at [hmhhmm/Zync](https://github.com/hmhhmm/Zync). Their commits are kept in the history.
+> The Zync application (the multi-agent AI backend, knowledge graph and React frontend) was built by **Team Gunners** at **UMHackathon 2026**; the original lives at [hmhhmm/Zync](https://github.com/hmhhmm/Zync). Their commits are kept in the history.
 >
 > **What I built on top of it ([@weeeijin](https://github.com/weeeijin)):** the production platform that takes the app from a laptop to the cloud.
 > - **CI/CD:** GitHub Actions for tests, security scans and image builds, plus tag-based releases with smoke tests and automatic rollback
