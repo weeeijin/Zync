@@ -49,6 +49,7 @@ jobs:
     permissions:
       contents: read
       packages: read
+      id-token: write # OIDC → short-lived AWS credentials, no stored AWS keys
     environment:
       name: production
       url: ${{ vars.PUBLIC_URL }}
@@ -64,6 +65,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.VERSION }}
+
+      # ── Temporarily allow SSH from this runner only (needs infra/github_oidc.tf) ──
+      - name: Configure AWS credentials (OIDC)
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-southeast-5' }}
+
+      - name: Open SSH for this runner's IP
+        id: ssh_open
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
+        env:
+          SG_ID: ${{ vars.AWS_SECURITY_GROUP_ID }}
+        run: |
+          RUNNER_IP="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
+          echo "::add-mask::$RUNNER_IP"
+          RULE_ID=$(aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=$RUNNER_IP/32,Description=gha-deploy-${{ github.run_id }}}]" \
+            --query 'SecurityGroupRules[0].SecurityGroupRuleId' --output text)
+          echo "rule_id=$RULE_ID" >> "$GITHUB_OUTPUT"
 
       # Only runtime config goes to the server — code ships inside the images
       - name: Upload compose and proxy config
@@ -126,6 +148,12 @@ jobs:
               fi
               exit 1
             fi
+
+      - name: Close SSH for this runner
+        if: always() && steps.ssh_open.outputs.rule_id != ''
+        run: |
+          aws ec2 revoke-security-group-ingress --group-id "${{ vars.AWS_SECURITY_GROUP_ID }}" \
+            --security-group-rule-ids "${{ steps.ssh_open.outputs.rule_id }}"
 
       - name: External smoke test
         if: vars.PUBLIC_URL != ''

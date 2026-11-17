@@ -38,3 +38,12 @@ CLAUDE.md
 
 # Vite cache at repo root
 .vite/
+
+# Terraform
+infra/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+infra/backend.hcl
+crash.log

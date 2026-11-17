@@ -1,0 +1,12 @@
+# Remote state settings. Copy to backend.hcl (gitignored) and run:
+#   terraform init -backend-config=backend.hcl
+#
+# Create the state bucket once, by hand (it must exist before init):
+#   aws s3api create-bucket --bucket <name> --region ap-southeast-5 \
+#     --create-bucket-configuration LocationConstraint=ap-southeast-5
+#   aws s3api put-bucket-versioning --bucket <name> --versioning-configuration Status=Enabled
+bucket       = "zync-terraform-state-<your-account-id>"
+key          = "zync/production/terraform.tfstate"
+region       = "ap-southeast-5"
+encrypt      = true
+use_lockfile = true # S3-native state locking, no DynamoDB table needed

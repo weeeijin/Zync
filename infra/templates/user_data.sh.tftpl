@@ -1,0 +1,69 @@
+#!/bin/bash
+# First-boot bootstrap for the Zync app server (Ubuntu 24.04).
+# Rendered by Terraform templatefile(): a doubled dollar sign escapes a shell
+# variable; a single dollar-brace is substituted by Terraform.
+set -euxo pipefail
+exec > >(tee /var/log/zync-bootstrap.log) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+
+# ── Base packages + automatic security updates ──────────────────────────────
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg unattended-upgrades fail2ban jq
+dpkg-reconfigure -f noninteractive unattended-upgrades
+systemctl enable --now fail2ban
+
+# ── Docker Engine + Compose plugin from Docker's official repository ────────
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$${VERSION_CODENAME}") stable" \
+  > /etc/apt/sources.list.d/docker.list
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Default log rotation for every container (prod compose also sets it per service)
+cat > /etc/docker/daemon.json <<'JSON'
+{
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "5" },
+  "live-restore": true
+}
+JSON
+systemctl enable docker
+systemctl restart docker
+usermod -aG docker ubuntu
+
+# ── AWS CLI (used by the nightly backup job) ────────────────────────────────
+snap install aws-cli --classic
+
+# ── 2 GB swap as a safety net against OOM during image pulls ────────────────
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  sysctl -w vm.swappiness=10
+  echo 'vm.swappiness=10' > /etc/sysctl.d/99-zync.conf
+fi
+
+# ── App directory + settings consumed by deploy/backup.sh ───────────────────
+mkdir -p ${app_directory}
+chown ubuntu:ubuntu ${app_directory}
+
+cat > /etc/zync.env <<EOF
+APP_DIR=${app_directory}
+BACKUP_BUCKET=${backup_bucket}
+AWS_REGION=${aws_region}
+EOF
+
+# Nightly database backup at 02:30 Malaysia time (18:30 UTC). The script is
+# shipped by the deploy workflow; until the first deploy it simply isn't there.
+cat > /etc/cron.d/zync-backup <<EOF
+30 18 * * * ubuntu [ -x ${app_directory}/deploy/backup.sh ] && ${app_directory}/deploy/backup.sh >> /var/log/zync-backup.log 2>&1
+EOF
+touch /var/log/zync-backup.log
+chown ubuntu:ubuntu /var/log/zync-backup.log
+
+echo "Bootstrap complete"
