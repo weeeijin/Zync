@@ -162,7 +162,7 @@ resource "aws_iam_role_policy_attachment" "dlm" {
 }
 
 resource "aws_dlm_lifecycle_policy" "daily_snapshots" {
-  description        = "${local.name}: daily EBS snapshots"
+  description        = "${local.name} daily EBS snapshots"
   execution_role_arn = aws_iam_role.dlm.arn
   state              = "ENABLED"
 
