@@ -4,7 +4,7 @@ import os
 import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 
 SAMPLE_DEPOSIT = {
@@ -137,11 +137,6 @@ async def test_agent4_returns_compliance_result():
 @pytest.mark.asyncio
 async def test_agent3_returns_iteration_table():
     """Agent 3 should return iteration table with best iteration."""
-    mock_proposal = {
-        "pH_lower": 4.0, "pH_upper": 4.5,
-        "concentration_M": 0.5, "temperature_C": 25, "contact_time_hrs": 2.0,
-        "reasoning": "Stable parameters"
-    }
     mock_glm_response = {"output": '{"pH_lower":4.0,"pH_upper":4.5,"concentration_M":0.5,"temperature_C":25,"contact_time_hrs":2.0,"reasoning":"Stable"}', "reasoning": "", "tool_calls": []}
 
     with patch("agents.agent3_optimizer._store_iteration", new_callable=AsyncMock), \

@@ -1,0 +1,16 @@
+target-version = "py311"
+line-length = 120
+extend-exclude = ["__pycache__"]
+
+[lint]
+# E9/F: real errors · B: likely bugs · S: security (bandit) · ASYNC: async pitfalls
+select = ["E9", "F", "B", "S", "ASYNC"]
+ignore = [
+  "B008",     # FastAPI's File()/Header() defaults are idiomatic
+  "S110",     # existing best-effort fallbacks; revisit with structured logging
+  "S311",     # random is used for non-security IDs
+  "ASYNC230", # tiny local JSON reads at startup/seed time
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]

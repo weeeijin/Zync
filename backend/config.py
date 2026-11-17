@@ -47,7 +47,7 @@ def _validate_production_config() -> None:
     missing = [name for name, value in required.items() if not value]
     if missing:
         raise RuntimeError(f"Missing required production settings: {', '.join(missing)}")
-    if ADMIN_SECRET == "zync-admin" or len(ADMIN_SECRET) < 16:
+    if ADMIN_SECRET == "zync-admin" or len(ADMIN_SECRET) < 16:  # noqa: S105 (rejects the dev default)
         raise RuntimeError("ADMIN_SECRET must be a strong value (16+ chars) in production")
     if "*" in CORS_ORIGINS:
         raise RuntimeError("CORS_ORIGINS must list explicit origins in production, not '*'")

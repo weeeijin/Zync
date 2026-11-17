@@ -1,9 +1,8 @@
-import pytest
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from tools.doe_checker import get_regulations_for_flowsheet, _FALLBACK_RULES
+from tools.doe_checker import get_regulations_for_flowsheet
 
 
 def check_radioactivity(thorium_bq_g: float) -> dict:

@@ -11,8 +11,6 @@ Run them once after getting your API key to verify end-to-end.
 import pytest
 import os
 import sys
-import json
-import asyncio
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -256,4 +254,4 @@ async def test_live_full_pipeline_smoke():
     assert "recommended_flowsheet" in report
     assert "next_steps" in report
     print(f"  Agent 5 ✓ — report ID: {report.get('report_id')}")
-    print(f"\n  Full pipeline smoke test PASSED")
+    print("\n  Full pipeline smoke test PASSED")

@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 from fastapi import APIRouter, Header, HTTPException
@@ -6,6 +7,12 @@ from rag.hybrid_search import seed_qdrant, get_collection_info
 from config import ADMIN_SECRET
 
 router = APIRouter()
+
+
+def _require_admin(secret: str) -> None:
+    """Constant-time comparison so the secret can't be guessed via response timing."""
+    if not ADMIN_SECRET or not hmac.compare_digest(secret.encode(), ADMIN_SECRET.encode()):
+        raise HTTPException(status_code=403, detail="Invalid admin secret")
 
 _RULES_PATH = os.path.join(
     os.path.dirname(__file__), "../../data/lixiviant_kb/doe_rules.json"
@@ -18,8 +25,7 @@ async def seed_neo4j(x_admin_secret: str = Header(...)):
     Seeds Neo4j from data/known_cases/known_cases.json.
     Run once after starting Neo4j.
     """
-    if x_admin_secret != ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid admin secret")
+    _require_admin(x_admin_secret)
 
     result = await seed_from_json()
 
@@ -41,14 +47,13 @@ async def seed_qdrant_endpoint(x_admin_secret: str = Header(...)):
 
     Note: First run downloads the embedding model (~120MB).
     """
-    if x_admin_secret != ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid admin secret")
+    _require_admin(x_admin_secret)
 
     try:
         with open(_RULES_PATH) as f:
             rules = json.load(f)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="doe_rules.json not found")
+    except FileNotFoundError as err:
+        raise HTTPException(status_code=404, detail="doe_rules.json not found") from err
 
     result = await seed_qdrant(rules)
 
@@ -70,8 +75,7 @@ async def db_status(x_admin_secret: str = Header(...)):
     Check status of all databases — Neo4j and Qdrant.
     Run before the demo to verify everything is seeded.
     """
-    if x_admin_secret != ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid admin secret")
+    _require_admin(x_admin_secret)
 
     neo4j_count  = await get_case_count()
     qdrant_info  = await get_collection_info()

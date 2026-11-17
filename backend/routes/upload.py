@@ -69,8 +69,8 @@ async def upload_pdf(file: UploadFile = File(...)):
             "extracted": extracted,
             "reasoning": result.get("reasoning", ""),
         }
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as err:
         raise HTTPException(
             status_code=422,
             detail="GLM could not extract structured data from this PDF"
-        )
+        ) from err

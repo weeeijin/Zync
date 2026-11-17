@@ -71,16 +71,6 @@ async def run_pipeline(body: PipelineRequest):
             yield _event({"agent": 3, "status": "optimizing"})
             optimization = {}
 
-            async def stream_iteration(iteration: dict):
-                """Forward each iteration to SSE as it completes."""
-                yield_ev = _event({
-                    "agent":     3,
-                    "type":      "iteration",
-                    "iteration": iteration,
-                })
-                # We can't yield inside a callback so we store for batch send
-                pass
-
             all_iterations = []
 
             async def collect_iteration(iteration: dict):
