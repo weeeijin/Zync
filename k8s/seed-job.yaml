@@ -1,0 +1,42 @@
+# One-off Job: waits for the backend to be ready, then seeds Neo4j and Qdrant.
+# Run it once:      kubectl apply -f k8s/seed-job.yaml
+# Watch it:         kubectl -n zync logs -f job/seed
+# Run it again:     kubectl -n zync delete job seed && kubectl apply -f k8s/seed-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: seed
+  namespace: zync
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  template:
+    spec:
+      restartPolicy: OnFailure
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: seed
+          image: curlimages/curl:8.11.1
+          env:
+            - name: ADMIN_SECRET
+              valueFrom:
+                secretKeyRef: { name: zync-secrets, key: ADMIN_SECRET }
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              until curl -fsS http://backend:8000/ready; do echo " waiting for backend"; sleep 5; done
+              echo; echo "Seeding Neo4j"
+              curl -fsS -X POST -H "X-Admin-Secret: $ADMIN_SECRET" http://backend:8000/api/admin/seed
+              echo; echo "Seeding Qdrant"
+              curl -fsS -X POST -H "X-Admin-Secret: $ADMIN_SECRET" http://backend:8000/api/admin/seed-qdrant
+              echo; curl -fsS -H "X-Admin-Secret: $ADMIN_SECRET" http://backend:8000/api/admin/status
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

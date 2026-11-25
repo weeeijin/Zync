@@ -1,0 +1,111 @@
+# FastAPI backend: the 7 agents.
+# There is no depends_on in Kubernetes: the pod may start before the
+# databases. The readiness probe (/ready checks all three databases) keeps
+# traffic away until everything it needs is reachable.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+# Cache for the embedding model, so it isn't re-downloaded on every restart
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fastembed-cache
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  # Rolling update: start the new pod, wait until it's ready, then stop the old one
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      # Don't inject legacy POSTGRES_PORT=tcp://... style variables, which
+      # would clash with the app's own QDRANT_PORT setting
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: backend
+          image: zync-backend:k8s
+          imagePullPolicy: IfNotPresent # loaded into kind by k8s/up.sh
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: zync-config }
+          env:
+            - name: GLM_API_KEY
+              valueFrom:
+                secretKeyRef: { name: zync-secrets, key: GLM_API_KEY }
+            - name: ADMIN_SECRET
+              valueFrom:
+                secretKeyRef: { name: zync-secrets, key: ADMIN_SECRET }
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: zync-secrets, key: NEO4J_PASSWORD }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: zync-secrets, key: POSTGRES_PASSWORD }
+            - name: POSTGRES_URL
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)
+          startupProbe:
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe: # "is the process alive?" → restart the container if not
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 20
+          readinessProbe: # "can it serve traffic?" → remove from the Service if not
+            httpGet: { path: /ready, port: 8000 }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { memory: 1536Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp # Prometheus multiprocess metrics + Python temp files
+              mountPath: /tmp
+            # The whole ~/.cache: fastembed keeps models in ~/.cache/fastembed,
+            # but the HuggingFace downloader also writes ~/.cache/huggingface,
+            # and everything else is read-only
+            - name: fastembed-cache
+              mountPath: /home/app/.cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: fastembed-cache
+          persistentVolumeClaim:
+            claimName: fastembed-cache

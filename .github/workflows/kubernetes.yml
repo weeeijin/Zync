@@ -1,0 +1,35 @@
+name: Kubernetes manifests
+
+# Renders the Kustomize stack and validates every resource against the
+# Kubernetes API schemas, so a typo can't reach a cluster.
+on:
+  push:
+    branches: [main]
+    paths: ["k8s/**", ".github/workflows/kubernetes.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["k8s/**", ".github/workflows/kubernetes.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Kustomize build + kubeconform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Render manifests
+        run: |
+          cp k8s/secrets.env.example k8s/secrets.env
+          kubectl kustomize k8s > rendered.yaml
+          echo "Rendered $(grep -c '^kind:' rendered.yaml) resources"
+
+      - name: Validate against Kubernetes schemas
+        run: |
+          docker run --rm -v "$PWD:/w:ro" ghcr.io/yannh/kubeconform:v0.6.7 \
+            -strict -summary /w/rendered.yaml /w/k8s/seed-job.yaml
+
+      - name: Shell scripts
+        run: shellcheck -S warning k8s/*.sh

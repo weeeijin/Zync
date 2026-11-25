@@ -1,0 +1,55 @@
+# Qdrant: vector + hybrid search over regulations (Agent 4).
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+spec:
+  selector:
+    app: qdrant
+  ports:
+    - name: http
+      port: 6333
+      targetPort: 6333
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qdrant
+spec:
+  serviceName: qdrant
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qdrant
+  template:
+    metadata:
+      labels:
+        app: qdrant
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:v1.9.2
+          ports:
+            - containerPort: 6333
+          readinessProbe:
+            tcpSocket: { port: 6333 }
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 6333 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /qdrant/storage
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

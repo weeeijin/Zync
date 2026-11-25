@@ -1,0 +1,6 @@
+# A namespace groups all of Zync's resources, so they can be listed,
+# limited or deleted together (kubectl delete namespace zync).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zync

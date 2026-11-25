@@ -1,6 +1,6 @@
 # Zync — Malaysia's Sovereign REE Engineering Intelligence
 
-[![Test](https://github.com/weeeijin/Zync/actions/workflows/test.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/test.yml) [![Security](https://github.com/weeeijin/Zync/actions/workflows/security.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/security.yml) [![Docker Image CI](https://github.com/weeeijin/Zync/actions/workflows/docker-image.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/docker-image.yml) [![Terraform](https://github.com/weeeijin/Zync/actions/workflows/terraform.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/terraform.yml) [![Monitoring config](https://github.com/weeeijin/Zync/actions/workflows/monitoring.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/monitoring.yml) [![Deploy](https://github.com/weeeijin/Zync/actions/workflows/deploy.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/deploy.yml)
+[![Test](https://github.com/weeeijin/Zync/actions/workflows/test.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/test.yml) [![Security](https://github.com/weeeijin/Zync/actions/workflows/security.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/security.yml) [![Docker Image CI](https://github.com/weeeijin/Zync/actions/workflows/docker-image.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/docker-image.yml) [![Terraform](https://github.com/weeeijin/Zync/actions/workflows/terraform.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/terraform.yml) [![Monitoring config](https://github.com/weeeijin/Zync/actions/workflows/monitoring.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/monitoring.yml) [![Kubernetes manifests](https://github.com/weeeijin/Zync/actions/workflows/kubernetes.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/kubernetes.yml) [![Deploy](https://github.com/weeeijin/Zync/actions/workflows/deploy.yml/badge.svg)](https://github.com/weeeijin/Zync/actions/workflows/deploy.yml)
 
 > Putting GLM-5.1's scientific reasoning at the exact point where Malaysia's RM 1 trillion rare earth ambition is won or lost.
 
@@ -195,6 +195,7 @@ An end-to-end delivery and operations pipeline built around Zync: every push is 
 | **Security** | gitleaks secret scanning over full history, CodeQL (Python, JS/TS, Actions), Trivy scans of images (CRITICAL blocks the build) and IaC, SHA-pinned actions, Dependabot. **0 open code-scanning alerts** |
 | **Containers** | Multi-stage, non-root images (uid 10001 / 101), healthchecks, allowlist `.dockerignore`, packaging tools stripped, smoke-tested in CI. Published to GHCR with SBOM and build provenance |
 | **CD** | `git tag vX.Y.Z` → tests → images → deploy. GitHub OIDC opens SSH for the runner's IP only, the server pulls the exact version, `/ready` is smoke-tested, failures roll back automatically, SSH is closed again |
+| **Kubernetes** | The whole stack on a local [kind](https://kind.sigs.k8s.io) cluster with Kustomize: Deployments and StatefulSets with persistent volumes, startup/liveness/readiness probes, Secret + ConfigMap, a seed Job, resource requests and limits, and non-root, read-only, capability-dropped pods. Manifests are schema-validated in CI ([guide](k8s/README.md)) |
 | **Infrastructure as code** | Terraform for AWS: VPC with flow logs, least-privilege firewall, IMDSv2 EC2 with KMS-encrypted disk, Elastic IP, encrypted and versioned S3 backups, daily EBS snapshots, CloudWatch auto-recovery and alarms, a budget alarm, and a keyless GitHub deploy role |
 | **Observability** | Prometheus, Grafana, Loki, Alloy and Alertmanager. HTTP and GLM metrics (latency, time to first token, tokens), JSON logs with a request ID that follows each request from Caddy to the backend, 22 alert rules, a provisioned dashboard, blackbox probes and an external uptime check |
 | **Recovery** | Nightly Postgres, Neo4j and Qdrant backups with checksums to encrypted S3, a guarded restore script, one-click manual rollback, and a [runbook](docs/RUNBOOK.md) for every alert |
@@ -207,6 +208,7 @@ An end-to-end delivery and operations pipeline built around Zync: every push is 
              ├──► Security ───── gitleaks (history) · CodeQL (Python/JS/Actions) · Trivy IaC
              ├──► Docker CI ──── build → smoke test → Trivy image scan (blocks CRITICAL) → GHCR + SBOM + provenance
              ├──► Terraform ──── fmt · validate · Trivy (blocks MEDIUM+)
+             ├──► Kubernetes ─── kustomize build · kubeconform (strict schemas)
              └──► Monitoring ─── promtool · amtool · loki · alloy · shellcheck
 
  git tag vX.Y.Z ─► Test ─► Images ─► Deploy (env: production)
@@ -231,6 +233,7 @@ An end-to-end delivery and operations pipeline built around Zync: every push is 
 | CI/CD workflows | [`.github/workflows/`](.github/workflows/) |
 | Infrastructure as code | [`infra/`](infra/) (see its [README](infra/README.md) for first-time setup) |
 | One-command demo environment | [`infra/demo/`](infra/demo/): `demo-up.sh`, `connect-github.sh`, `demo-down.sh` |
+| Kubernetes (local kind cluster) | [`k8s/`](k8s/) (see its [README](k8s/README.md)) |
 | Compose stacks | `docker-compose.yml` (base) · `.override.yml` (dev) · `.prod.yml` · `.monitoring.yml` · `.monitoring.local.yml` |
 | Monitoring config, alerts, dashboards | [`monitoring/`](monitoring/) |
 | App instrumentation | [`backend/observability.py`](backend/observability.py) · [`backend/health.py`](backend/health.py) · [`backend/errors.py`](backend/errors.py) |
@@ -256,6 +259,16 @@ docker compose start postgres
 
 Host panels (CPU, disk) and the `node`/`cadvisor` targets stay empty on macOS; they need a Linux server.
 
+**On Kubernetes, locally.** Needs `kind` and `kubectl` (`brew install kind kubectl`):
+
+```bash
+k8s/up.sh                 # cluster → images → deploy → seed (~10 min the first time)
+open http://localhost:8088
+k8s/down.sh               # delete the cluster
+```
+
+[`k8s/README.md`](k8s/README.md) maps each Compose service to its Kubernetes object and has hands-on exercises: self-healing, scaling, readiness and rollback.
+
 **On AWS, for a day.** Sign in with `aws login`, then:
 
 ```bash
@@ -274,6 +287,7 @@ The demo runs in `us-east-1`, where new AWS accounts can launch EC2, and has a U
 | A FastAPI upgrade silently dropped the `/api` prefix from metric labels | Route-template resolver plus a unit test that pins the labels |
 | `terraform apply` failed on a colon in a DLM policy description, which `validate` didn't catch | Fixed the description. Some API rules only surface against the real cloud |
 | New AWS accounts can only launch EC2 in a few US regions, with a 1 vCPU quota | Moved the demo to `us-east-1`, added the `create_server` toggle, region-scoped the bucket name |
+| On Kubernetes, Neo4j refused to start (`Unrecognized setting ... PASSWORD`) and Caddy couldn't exec | The Neo4j image turns every `NEO4J_*` variable into config, so the password variable was renamed. Caddy's binary needs its `NET_BIND_SERVICE` file capability even with all others dropped |
 | Long-lived access keys are easy to leak | Local access uses `aws login` (short-lived credentials); CI uses GitHub OIDC with no stored AWS keys |
 
 ---
@@ -339,6 +353,7 @@ Zync/
 │       └── modules/     # Diagnosis, Lixiviant, Zone Strategy
 ├── infra/               # Terraform: AWS VPC, EC2, S3 backups, alarms, GitHub OIDC
 │   └── demo/            # One-command demo environment up / down
+├── k8s/                 # Kubernetes manifests (Kustomize) + kind up/down scripts
 ├── monitoring/          # Prometheus, alert rules, Alertmanager, Loki, Alloy, Grafana
 ├── deploy/              # Caddyfile, backup.sh, restore.sh
 ├── docs/

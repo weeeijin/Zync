@@ -1,0 +1,37 @@
+# Apply everything with:  kubectl apply -k k8s
+# Kustomize puts every resource in the "zync" namespace and builds the
+# Secret and the gateway's ConfigMap from local files.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: zync
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: zync
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - config.yaml
+  - postgres.yaml
+  - neo4j.yaml
+  - qdrant.yaml
+  - backend.yaml
+  - frontend.yaml
+  - gateway.yaml
+
+generatorOptions:
+  # Keep plain names (zync-secrets, gateway-caddyfile) so the seed Job can
+  # reference them. After changing secrets.env: kubectl -n zync rollout restart deploy
+  disableNameSuffixHash: true
+
+secretGenerator:
+  - name: zync-secrets
+    envs:
+      - secrets.env # gitignored; created by k8s/up.sh from secrets.env.example
+
+configMapGenerator:
+  - name: gateway-caddyfile
+    files:
+      - Caddyfile
