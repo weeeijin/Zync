@@ -3,6 +3,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: zync-config
+  namespace: zync
 data:
   APP_ENV: production
   GLM_MODEL: glm-4-flash

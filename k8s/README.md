@@ -36,16 +36,16 @@ The first run takes about 10 minutes: building images, pulling database images a
 | One-off `curl` to seed | **Job** (`seed-job.yaml`) | Runs to completion, with retries |
 | `mem_limit` | `resources.requests` / `limits` | Requests are used for scheduling; the limit triggers an out-of-memory kill |
 
-## Security settings on our own images
+## Pod security
 
-`backend`, `frontend`, `gateway` and the seed Job run with:
+Every pod, the databases included, runs with:
 
-- `runAsNonRoot` and a fixed user ID
-- `readOnlyRootFilesystem: true`, with writable `emptyDir` volumes only where needed (`/tmp`, Caddy's `/data`)
+- `runAsNonRoot` and a fixed user: 10001+ for our own images; the databases use their images' built-in users (postgres 70, neo4j 7474, qdrant 1000)
+- `readOnlyRootFilesystem: true`, with writable `emptyDir` volumes only where needed (`/tmp`, Postgres's socket directory, Caddy's `/data`). The exception is Neo4j, whose entrypoint edits its own config at startup
 - `allowPrivilegeEscalation: false` and all Linux capabilities dropped (Caddy keeps only `NET_BIND_SERVICE`, see below)
-- the `RuntimeDefault` seccomp profile
+- the `RuntimeDefault` seccomp profile, plus CPU and memory requests and limits
 
-The database images (Postgres, Neo4j, Qdrant) manage their own users, so they keep the image defaults.
+The Security workflow scans these manifests with Trivy on every push. The few accepted findings are listed, each with its reason, in [`.trivyignore.yaml`](../.trivyignore.yaml).
 
 ## Try it: Kubernetes in action
 
@@ -82,6 +82,8 @@ kubectl -n zync exec -it postgres-0 -- psql -U zync
 | Neo4j `CrashLoopBackOff`: `Unrecognized setting ... PASSWORD` | The Neo4j image turns **every** `NEO4J_*` variable into a config setting, so `NEO4J_PASSWORD` became an invalid setting | Renamed it to `GRAPH_PASSWORD` and built `NEO4J_AUTH` from it |
 | Caddy `exec /usr/bin/caddy: operation not permitted` | The binary has the `cap_net_bind_service` file capability; with every capability dropped, the kernel refuses to run it | `capabilities.add: ["NET_BIND_SERVICE"]` |
 | Seeding Qdrant returned 500: `Read-only file system (os error 30)` | With `readOnlyRootFilesystem`, the HuggingFace downloader writes to `~/.cache/huggingface`, outside the mounted `~/.cache/fastembed` | Mount the cache volume over the whole `~/.cache`. The read-only setting found a write path nobody knew about |
+| Trivy reported 64 misconfigurations once the manifests were scanned: databases running as root, all capabilities kept, no seccomp | The app pods were hardened but the databases kept image defaults | Ran each database as its image's non-root user, dropped capabilities, added seccomp, CPU limits and read-only filesystems. The remaining trade-offs are documented in `.trivyignore.yaml` |
+| Qdrant `Permission denied` on its WAL after switching to non-root | Its existing data was written by root, and kind's local-path storage ignores `fsGroup` | Recreated the volume and reseeded (it's reproducible test data). On real clusters, `fsGroup` or a one-time `chown` Job handles this |
 | Port 8080 already in use | Another app on the laptop | The gateway is published on **8088** |
 
 ## Next steps (not done yet)

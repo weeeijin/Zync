@@ -59,6 +59,7 @@ jobs:
         with:
           scan-type: config
           scan-ref: .
+          trivyignores: .trivyignore.yaml
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy-config.sarif

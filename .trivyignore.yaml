@@ -1,0 +1,41 @@
+# Accepted Trivy findings. Each entry is scoped to specific files and states
+# why it is accepted, so a new problem anywhere else is still reported.
+# Review these when the related image or manifest changes.
+misconfigurations:
+  - id: KSV-01010
+    paths: ["k8s/config.yaml"]
+    statement: >-
+      False positive: the key QDRANT_PORT is flagged as sensitive, but it holds
+      a port number. All secrets live in the zync-secrets Secret.
+
+  - id: KSV-0022
+    paths: ["k8s/gateway.yaml"]
+    statement: >-
+      The caddy binary carries the cap_net_bind_service file capability; the
+      kernel refuses to exec it unless that capability is in the container's
+      set. Every other capability is dropped and privilege escalation is off.
+
+  - id: KSV-0014
+    paths: ["k8s/neo4j.yaml"]
+    statement: >-
+      The Neo4j entrypoint writes NEO4J_* settings into conf/neo4j.conf and
+      copies the APOC plugin at startup, so the root filesystem can't be
+      read-only. It runs as the non-root neo4j user with all capabilities dropped.
+
+  - id: KSV-0020
+    paths: ["k8s/postgres.yaml", "k8s/neo4j.yaml", "k8s/qdrant.yaml"]
+    statement: >-
+      Database images run as their built-in non-root users (postgres 70,
+      neo4j 7474, qdrant 1000), which own the image's files. kind's local-path
+      storage ignores fsGroup, so a different UID couldn't use the data.
+
+  - id: KSV-0021
+    paths: ["k8s/postgres.yaml", "k8s/neo4j.yaml", "k8s/qdrant.yaml"]
+    statement: Same as KSV-0020, for the group ID.
+
+  - id: KSV-0125
+    paths: ["k8s/qdrant.yaml", "k8s/seed-job.yaml"]
+    statement: >-
+      Official vendor images on Docker Hub (qdrant/qdrant, curlimages/curl),
+      pinned to exact versions. A private registry mirror is out of scope for
+      a local learning cluster.

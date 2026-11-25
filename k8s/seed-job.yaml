@@ -16,11 +16,12 @@ spec:
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
-        runAsUser: 100
+        runAsUser: 10103
+        runAsGroup: 10103
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: seed
-          image: curlimages/curl:8.11.1
+          image: docker.io/curlimages/curl:8.11.1
           env:
             - name: ADMIN_SECRET
               valueFrom:
@@ -35,6 +36,9 @@ spec:
               echo; echo "Seeding Qdrant"
               curl -fsS -X POST -H "X-Admin-Secret: $ADMIN_SECRET" http://backend:8000/api/admin/seed-qdrant
               echo; curl -fsS -H "X-Admin-Secret: $ADMIN_SECRET" http://backend:8000/api/admin/status
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

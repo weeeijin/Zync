@@ -5,6 +5,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
+  namespace: zync
 spec:
   selector:
     app: postgres
@@ -16,6 +17,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
+  namespace: zync
 spec:
   serviceName: postgres
   replicas: 1
@@ -28,6 +30,13 @@ spec:
         app: postgres
     spec:
       enableServiceLinks: false
+      # The image's own postgres user (uid 70); the entrypoint supports running as it directly
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: postgres
           image: postgres:16-alpine
@@ -57,10 +66,24 @@ spec:
             periodSeconds: 20
           resources:
             requests: { cpu: 100m, memory: 128Mi }
-            limits: { memory: 512Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+            - name: run # unix socket + lock file
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: data
