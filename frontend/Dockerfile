@@ -24,7 +24,7 @@ COPY . .
 RUN npm run build
 
 # ── Production runtime ──────────────────────────────────────────────────────
-FROM nginxinc/nginx-unprivileged:1.30-alpine AS prod
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS prod
 # Pick up OS security fixes released after the base image was built
 USER root
 RUN apk upgrade --no-cache
